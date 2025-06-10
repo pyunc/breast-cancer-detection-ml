@@ -122,6 +122,64 @@ class Preprocessor:
         
         return {'X_train_transformed': X_train_transformed}
     
+    def transform(self, X):
+        """
+        Apply the preprocessing pipeline to transform data.
+        
+        Parameters:
+        -----------
+        X : pandas.DataFrame or numpy.ndarray
+            Features to transform.
+        
+        Returns:
+        --------
+        pandas.DataFrame or numpy.ndarray
+            Transformed features.
+        """
+        is_dataframe = isinstance(X, pd.DataFrame)
+        index = X.index if is_dataframe else None
+        
+        # Step 1: Scale the features
+        if self.scaler is not None:
+            if is_dataframe:
+                X_scaled = pd.DataFrame(
+                    self.scaler.transform(X),
+                    columns=X.columns,
+                    index=index
+                )
+            else:
+                X_scaled = self.scaler.transform(X)
+        else:
+            X_scaled = X
+        
+        # Step 2: Apply feature selection if needed
+        if self.feature_selector is not None:
+            if is_dataframe:
+                X_selected = pd.DataFrame(
+                    self.feature_selector.transform(X_scaled),
+                    columns=X.columns[self.feature_selector.get_support()],
+                    index=index
+                )
+            else:
+                X_selected = self.feature_selector.transform(X_scaled)
+        else:
+            X_selected = X_scaled
+        
+        # Step 3: Apply PCA if needed
+        if self.pca is not None:
+            if is_dataframe:
+                X_transformed = pd.DataFrame(
+                    self.pca.transform(X_selected),
+                    columns=[f'PC{i+1}' for i in range(self.pca.n_components_)],
+                    index=index
+                )
+            else:
+                X_transformed = self.pca.transform(X_selected)
+        else:
+            X_transformed = X_selected
+        
+        return X_transformed
+        
     def plot_feature_importances(self, top_n=10):
         """
         Plot the top N most important features.
@@ -163,13 +221,13 @@ def create_default_preprocessor(n_features=10, use_pca=False, n_components=2):
     """
     feature_selector = SelectKBest(f_classif, k=n_features)
     pca = PCA(n_components=n_components) if use_pca else None
-    
+    scaler = StandardScaler()
+
     return Preprocessor(
-        scaler=StandardScaler(),
+        scaler=scaler,
         feature_selector=feature_selector,
         pca=pca
     )
-
 
 if __name__ == "__main__":
     # Test the preprocessor
@@ -181,7 +239,13 @@ if __name__ == "__main__":
     
     # Create and apply preprocessor
     preprocessor = create_default_preprocessor(n_features=15, use_pca=True, n_components=5)
+
     transformed_data = preprocessor.fit_transform(X_train, y_train, X_test)
+
+    # print(preprocessor.scaler)
+    # print(preprocessor.feature_selector)
+    # print(preprocessor.pca)
+    # print(preprocessor.feature_importances)
     
     print("\nTransformed training data shape:", transformed_data['X_train_transformed'].shape)
     print("Transformed test data shape:", transformed_data['X_test_transformed'].shape)

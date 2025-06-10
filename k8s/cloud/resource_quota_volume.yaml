@@ -1,0 +1,23 @@
+# This file defines resource quotas for different namespaces in a Kubernetes cluster.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: prod-storage-quota
+  namespace: prod
+spec:
+  hard:
+    persistentvolumeclaims: 2
+    requests.storage: 20Gi
+
+---
+
+# This file defines resource quotas for different namespaces in a Kubernetes cluster.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-storage-quota
+  namespace: dev
+spec:
+  hard:
+    persistentvolumeclaims: 2
+    requests.storage: 10Gi

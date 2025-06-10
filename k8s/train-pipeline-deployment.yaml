@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: breast-cancer-detection-ml-train-pipeline-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: train
+  template:
+    metadata:
+      labels:
+        app: train
+    spec:
+      containers:
+        - name: train
+          image: pauloyuncha/breast-cancer-detection-ml:v1
+          ports:
+            - containerPort: 80
+              name: https
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "700Mi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: train
+spec:
+  selector:
+    app: train
+  ports:
+  - port: 80
+    targetPort: 80
+    name: http
+    protocol: TCP
+    nodePort: 30000
+  type: NodePort
+

@@ -1,0 +1,72 @@
+# exemplo NFS storage para o PostgreSQL no Kubernetes usando PersistentVolume e PersistentVolumeClaim manualmente criados
+
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-pvc
+spec:
+  resources:
+    requests:
+      storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-static-storage
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgre
+spec:
+  selector:
+    matchLabels:
+      app: postgre
+  template:
+    metadata:
+      labels:
+        app: postgre
+    spec:
+      containers:
+        - name: postgre
+          image: postgres:15.0
+          ports:
+          - containerPort: 5432
+          env:
+          - name: POSTGRES_DB
+            value: "kubenews"
+          - name: POSTGRES_USER
+            value: "kubenews"
+          - name: POSTGRES_PASSWORD
+            value: "pq123"  
+          - name: PGDATA
+            value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+          - name: postgres-data
+            mountPath: "/var/lib/postgresql/data"
+            subPath: pgdata
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: db-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgre
+spec:
+  selector: 
+    app: postgre
+  ports:
+    - port: 5432
+      targetPort: 5432
+      # nodePort: 30000
+  type: LoadBalancer

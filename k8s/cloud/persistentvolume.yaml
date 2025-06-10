@@ -1,0 +1,18 @@
+# persistent volume for NFS storage criado manualmente
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: db-pv-nfs
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: nfs-static-storage
+  mountOptions:
+    - nfsvers=4.2
+  nfs:
+    path: /mnt/nfs_shared
+    server: 164.92.253.107

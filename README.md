@@ -1,20 +1,6 @@
-# First deactivate any active environment
-deactivate || exit
-
-# Ensure pyenv has correct Python version
-pyenv install 3.11.8
-pyenv local 3.11.8
-
-# Remove existing Poetry environment
-rm -rf .venv/
-
-# Clear Poetry cache
-rm -rf ~/.cache/pypoetry
-
-# Create new environment, activate it and install requirements.txt
-
-python3 -m venv .venv
-
-source .venv/bin/activate
-
-python3 main.py
+<!-- curl -X POST http://localhost:8000/predict   -H "Content-Type: application/json"   -d '{
+    "features": 
+      [17.99, 10.38, 122.8, 1001, 0.1184, 0.2776, 0.3001, 0.1471, 0.2419, 0.07871, 1.095, 0.9053, 8.589, 153.4, 0.006399]
+    ,
+    "apply_scaling": true
+  }' -->

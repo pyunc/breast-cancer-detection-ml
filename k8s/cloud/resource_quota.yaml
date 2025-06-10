@@ -1,0 +1,26 @@
+# This file defines resource quotas for different namespaces in a Kubernetes cluster.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: prod-quota
+  namespace: prod
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "5"
+    limits.memory: 10Gi
+
+---
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-quota
+  namespace: dev
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "3"
+    limits.memory: 6Gi

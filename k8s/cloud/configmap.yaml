@@ -1,0 +1,19 @@
+
+# Add this to your existing ConfigMap or create a new one
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: prod
+data:
+  APP_SERVER: "cloud-prod-env"
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: dev
+data:
+  APP_SERVER: "cloud-dev-env"

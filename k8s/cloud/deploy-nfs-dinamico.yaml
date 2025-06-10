@@ -1,0 +1,73 @@
+# exemplo NFS storage com block storage da DO para o PostgreSQL no Kubernetes
+
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-pvc-dynamic
+  namespace: prod
+spec:
+  resources:
+    requests:
+      storage: 25Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: do-block-storage
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgre-dynamic
+spec:
+  selector:
+    matchLabels:
+      app: postgre-dynamic
+  template:
+    metadata:
+      labels:
+        app: postgre-dynamic
+    spec:
+      containers:
+        - name: postgre
+          image: postgres:15.0
+          ports:
+          - containerPort: 5432
+          env:
+          - name: POSTGRES_DB
+            value: "kubenews"
+          - name: POSTGRES_USER
+            value: "kubenews"
+          - name: POSTGRES_PASSWORD
+            value: "pq123"  
+          - name: PGDATA
+            value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+          - name: postgres-data
+            mountPath: "/var/lib/postgresql/data"
+            subPath: pgdata
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: db-pvc-dynamic
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgre-dynamic
+spec:
+  selector: 
+    app: postgre-dynamic
+  ports:
+    - port: 5432
+      targetPort: 5432
+      # nodePort: 30000
+  type: LoadBalancer

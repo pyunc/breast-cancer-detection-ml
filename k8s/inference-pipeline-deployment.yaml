@@ -1,0 +1,98 @@
+  # create a configmap for the k8s cluster
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aula-k8s-config
+  # namespace: development
+data:
+  # Add your configuration data here
+  APP_VERSION_CONFIG: "3.0.0"
+  APP_NAME_CONFIG: "prod-configmap-breast-cancer-detection-ml-inference-pipeline"
+  APP_AUTHOR_CONFIG: "Paulo Yun Cha"
+  APP_VERSION: "3.0.0"
+  APP_NAME: "prod-configmap-breast-cancer-detection-ml-inference-pipeline"
+  APP_AUTHOR: "Paulo Yun Cha"
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: breast-cancer-detection-ml-inference-pipeline-deployment
+  # namespace: development
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: inference
+  template:
+    metadata:
+      labels:
+        app: inference
+    spec:
+      containers:
+        - name: inference
+          image: pauloyuncha/breast-cancer-detection-ml:v5
+          command: ["uv"]
+          args:
+            - run
+            - python3
+            - tools/ml_service.py
+            - --model-path
+            - /opt/ml/models/logistic_regression.joblib
+            - --port
+            - "8000"
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "800Mi"
+            requests:
+              cpu: "0.5"
+              memory: "800Mi"
+          env:
+            - name: APP_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_VERSION_CONFIG
+            - name: APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_NAME_CONFIG
+            - name: APP_AUTHOR
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_AUTHOR_CONFIG
+            - name: APP_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: APP_SERVER
+      restartPolicy: Always
+      imagePullSecrets:
+        - name: docker-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference
+  # namespace: development
+spec:
+  selector:
+    app: inference
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+    protocol: TCP
+    # nodePort: 30000
+  type: LoadBalancer
+
+---
+
