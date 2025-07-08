@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-python-hello-world
+spec:
+  schedule: "* * * * *"  # Every minute
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: python-job
+            image: python:3.9-alpine
+            command:
+            - python
+            - -c
+            - "import datetime; print(f'Hello World! Current time: {datetime.datetime.now()}')"
+          restartPolicy: OnFailure
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "512Mi"
+      backoffLimit: 4
+      completions: 1
+      parallelism: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 600
+      # Optional: Add labels to the cron job
+      metadata:
+        labels:
+          app: cronjob-python-hello-world
+          environment: production
+        annotations:
+          description: "This cron job runs a Python script every minute"
+          owner: "user@example.com"
+---
+# Note: The above cron job will print "Hello World!" with the current time every minute.
+# Make sure to adjust the schedule as needed.
+# You can also modify the command to run a different script or application as required.
+# Ensure that the Kubernetes cluster has the necessary permissions to run cron jobs.
+# You can apply this configuration using `kubectl apply -f cronjob.yaml`
+# to create the cron job in your Kubernetes cluster.
+# Ensure that the Kubernetes cluster has the necessary permissions to run cron jobs.
+# You can apply this configuration using `kubectl apply -f cronjob.yaml`
+# to create the cron job in your Kubernetes cluster.
+# Ensure that the Kubernetes cluster has the necessary permissions to run cron jobs.    
+

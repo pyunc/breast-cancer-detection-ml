@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "512Mi"
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "curl -X POST https://webhook.site/12569037-98d4-4967-b3c9-fd7d95a9a5d3 -d 'Post Start Hook Triggered'"]
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "curl -X POST https://webhook.site/12569037-98d4-4967-b3c9-fd7d95a9a5d3 -d 'Pre Stop Hook Triggered'"]
+              
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30000
+  type: NodePort
+---

@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name:  name
+spec:
+  template:
+    metadata:
+      name:  name
+    spec:
+      containers:
+      - name:  name
+        image:  image
+        command:  [ "python", "script.py"]
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "512Mi"
+      restartPolicy: Never
+  backoffLimit: 4
+  completions: 1
+  parallelism: 1
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 600
+  # Optional: Add labels to the job
+  metadata:
+    labels:
+      app: job-app
+      environment: production
+    annotations:
+      description: "This job runs a Python script"
+      owner: "user@example.com"
+  
