@@ -28,10 +28,10 @@ spec:
         lifecycle:
           postStart:
             exec:
-              command: ["/bin/sh", "-c", "curl -X POST https://webhook.site/12569037-98d4-4967-b3c9-fd7d95a9a5d3 -d 'Post Start Hook Triggered'"]
+              command: ["/bin/sh", "-c", "curl -X POST https://example.com/webhook -d 'Post Start Hook Triggered'"]
           preStop:
             exec:
-              command: ["/bin/sh", "-c", "curl -X POST https://webhook.site/12569037-98d4-4967-b3c9-fd7d95a9a5d3 -d 'Pre Stop Hook Triggered'"]
+              command: ["/bin/sh", "-c", "curl -X POST https://example.com/webhook -d 'Pre Stop Hook Triggered'"]
               
 ---
 apiVersion: v1
