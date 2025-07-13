@@ -19,9 +19,23 @@ RUN uv init --bare
 
 RUN uv venv
 
+# RUN source .venv/bin/activate
+
 RUN . .venv/bin/activate
 
+# RUN .venv/bin/uv
+
 RUN uv add -r requirements.txt
+
+RUN uv add dotenv
+
+RUN uv pip install -e .
+
+# RUN uv add -r requirements.txt
+
+# RUN uv lock
+
+
 
 COPY ./src/ /opt/ml/src
 COPY ./tools/ /opt/ml/tools

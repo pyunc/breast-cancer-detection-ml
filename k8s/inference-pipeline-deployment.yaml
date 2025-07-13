@@ -3,15 +3,16 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: aula-k8s-config
-  # namespace: development
+  # namespace: dev
 data:
   # Add your configuration data here
-  APP_VERSION_CONFIG: "3.0.0"
+  APP_VERSION_CONFIG: "1.0.0"
   APP_NAME_CONFIG: "prod-configmap-breast-cancer-detection-ml-inference-pipeline"
   APP_AUTHOR_CONFIG: "Paulo Yun Cha"
-  APP_VERSION: "3.0.0"
+  APP_VERSION: "1.0.0"
   APP_NAME: "prod-configmap-breast-cancer-detection-ml-inference-pipeline"
   APP_AUTHOR: "Paulo Yun Cha"
+  APP_SERVER_CONFIG: "cloud-prod-env"
 
 ---
 
@@ -19,7 +20,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: breast-cancer-detection-ml-inference-pipeline-deployment
-  # namespace: development
+  # namespace: dev
 spec:
   replicas: 4
   selector:
@@ -32,7 +33,7 @@ spec:
     spec:
       containers:
         - name: inference
-          image: pauloyuncha/breast-cancer-detection-ml:v5
+          image: pauloyuncha/breast-cancer-detection-ml:v4
           command: ["uv"]
           args:
             - run
@@ -72,17 +73,17 @@ spec:
             - name: APP_SERVER
               valueFrom:
                 configMapKeyRef:
-                  name: app-config
-                  key: APP_SERVER
+                  name: aula-k8s-config
+                  key: APP_SERVER_CONFIG
       restartPolicy: Always
-      imagePullSecrets:
-        - name: docker-secret
+      # imagePullSecrets:
+      #   - name: docker-secret
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: inference
-  # namespace: development
+  # namespace: dev
 spec:
   selector:
     app: inference
@@ -93,6 +94,7 @@ spec:
     protocol: TCP
     # nodePort: 30000
   type: LoadBalancer
+  # type: NodePort
 
 ---
 
