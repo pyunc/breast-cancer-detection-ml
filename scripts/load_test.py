@@ -72,7 +72,7 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description="Load test the prediction endpoint.")
     
-    parser.add_argument('--url', type=str, default='http://localhost:3000/predict',
+    parser.add_argument('--url', type=str, default='http://localhost:8501/predict',
                         help='URL of the prediction endpoint')
     parser.add_argument('--num_requests', type=int, default=10000,
                         help='Total number of requests to send')

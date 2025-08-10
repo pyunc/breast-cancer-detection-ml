@@ -27,9 +27,6 @@ RUN . .venv/bin/activate
 
 RUN uv add -r requirements.txt
 
-RUN uv add dotenv
-
-RUN uv pip install -e .
 
 # RUN uv add -r requirements.txt
 

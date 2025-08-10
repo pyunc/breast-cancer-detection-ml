@@ -1,4 +1,4 @@
-  # create a configmap for the k8s cluster
+# create a configmap for the k8s cluster
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -75,9 +75,44 @@ spec:
                 configMapKeyRef:
                   name: aula-k8s-config
                   key: APP_SERVER_CONFIG
-      restartPolicy: Always
-      # imagePullSecrets:
-      #   - name: docker-secret
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "0.2"
+              memory: "128Mi"
+            requests:
+              cpu: "0.1"
+              memory: "64Mi"
+      nodeSelector:
+        gputype: "true"
+      # node affinity:
+      #weight
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: gputype
+                    operator: In
+                    values:
+                      - "true"
+            - weight: 2
+              preference:
+                matchExpressions:
+                  - key: cloudprovider
+                    operator: In
+                    values:
+                      - aws
+                      - azure
+                      - gcp
+      
+
 ---
 apiVersion: v1
 kind: Service
@@ -88,13 +123,65 @@ spec:
   selector:
     app: inference
   ports:
-  - port: 8000
-    targetPort: 8000
-    name: http
-    protocol: TCP
-    # nodePort: 30000
-  type: LoadBalancer
-  # type: NodePort
+    - name: http
+      # Uncomment the next line to use LoadBalancer
+      # and Comment the NodePort section
+      # type: LoadBalancer
+      port: 8501
+      targetPort: 8000
+      nodePort: 30000
+    # - name: nginx
+    #   port: 80
+    #   targetPort: 80
+    #   nodePort: 30001
+  # type: LoadBalancer
+  type: NodePort
 
 ---
+# Horizontal Pod Autoscaler for the inference pipeline
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: inference
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: breast-cancer-detection-ml-inference-pipeline-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
 
+    
+  
