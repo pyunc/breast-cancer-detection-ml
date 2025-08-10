@@ -1,0 +1,67 @@
+name: CI/CD Pipeline
+
+on:
+    push:
+        branches: [main, dev]
+    pull_request:
+        branches: [main, dev]
+    workflow_dispatch:
+
+jobs:
+    primeiro-job:
+        name: Primeiro Job
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                python-version: '3.11'
+            - name: Install uv
+              run: curl -LsSf https://astral.sh/uv/install.sh | sh
+            - name: Install dependencies
+              run: |
+                uv pip install --upgrade pip
+                uv pip install -r requirements.txt
+            - name: Run script
+              run: |
+                varib = "Hello, World!"
+                print(varib)
+              shell: python
+
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                python-version: '3.11'
+            - name: Install uv
+              run: curl -LsSf https://astral.sh/uv/install.sh | sh
+            - name: Install dependencies
+              run: |
+                uv pip install --upgrade pip
+                uv add ruff
+            - name: Run linter
+              run: uv run ruff check --no-cache --fix
+
+    test:
+        runs-on: ubuntu-latest
+        needs: lint
+        steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                python-version: '3.10'
+            - name: Install uv
+              run: curl -LsSf https://astral.sh/uv/install.sh | sh
+            - name: Install dependencies
+              run: |
+                uv pip install --upgrade pip
+                uv pip install -r requirements.txt
+                uv pip install pytest
+            - name: Run tests
+              run: uv run pytest tests/src -v
