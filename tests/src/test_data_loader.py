@@ -8,6 +8,7 @@ Unit tests for data_loader module.
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
+
 from data_loader import load_data
 
 

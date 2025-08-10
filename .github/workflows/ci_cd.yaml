@@ -28,8 +28,8 @@ jobs:
                 uv pip install -r requirements.txt
             - name: Run script
               run: |
-                varib = "Hello, World!"
-                print(varib)
+                variable = "Hello, World!"
+                print(variable)
               shell: python
 
     lint:
@@ -62,7 +62,7 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v4
               with:
-                python-version: '3.10'
+                python-version: '3.11'
             - name: Install uv
               run: curl -LsSf https://astral.sh/uv/install.sh | sh
             - name: Create virtual environment and install dependencies
@@ -72,6 +72,7 @@ jobs:
                 uv pip install --upgrade pip
                 uv pip install -r requirements.txt
                 uv pip install pytest
+                uv pip install -e .
             - name: Run tests
               run: |
                 source .venv/bin/activate

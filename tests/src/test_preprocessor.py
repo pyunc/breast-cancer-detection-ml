@@ -13,7 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.decomposition import PCA
 
-from preprocessor import Preprocessor, create_default_preprocessor # noqa: E402, F401, F811, E501
+from preprocessor import Preprocessor, create_default_preprocessor
 
 
 class TestPreprocessor:
