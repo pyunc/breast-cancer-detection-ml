@@ -20,8 +20,10 @@ jobs:
                 python-version: '3.11'
             - name: Install uv
               run: curl -LsSf https://astral.sh/uv/install.sh | sh
-            - name: Install dependencies
+            - name: Create virtual environment and install dependencies
               run: |
+                uv venv
+                source .venv/bin/activate
                 uv pip install --upgrade pip
                 uv pip install -r requirements.txt
             - name: Run script
@@ -40,12 +42,16 @@ jobs:
                 python-version: '3.11'
             - name: Install uv
               run: curl -LsSf https://astral.sh/uv/install.sh | sh
-            - name: Install dependencies
+            - name: Create virtual environment and install dependencies
               run: |
+                uv venv
+                source .venv/bin/activate
                 uv pip install --upgrade pip
                 uv add ruff
             - name: Run linter
-              run: uv run ruff check --no-cache --fix
+              run: |
+                source .venv/bin/activate
+                uv run ruff check --no-cache --fix
 
     test:
         runs-on: ubuntu-latest
@@ -58,10 +64,14 @@ jobs:
                 python-version: '3.10'
             - name: Install uv
               run: curl -LsSf https://astral.sh/uv/install.sh | sh
-            - name: Install dependencies
+            - name: Create virtual environment and install dependencies
               run: |
+                uv venv
+                source .venv/bin/activate
                 uv pip install --upgrade pip
                 uv pip install -r requirements.txt
                 uv pip install pytest
             - name: Run tests
-              run: uv run pytest tests/src -v
+              run: |
+                source .venv/bin/activate
+                uv run pytest tests/src -v
