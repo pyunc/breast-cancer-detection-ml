@@ -6,7 +6,6 @@ Preprocessing module for breast cancer classification.
 Handles feature scaling, selection and dimensionality reduction.
 """
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
