@@ -7,7 +7,6 @@ Provides detailed metrics and visualizations for assessing model performance.
 """
 
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
