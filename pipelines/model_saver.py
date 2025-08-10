@@ -18,7 +18,7 @@ def save_model_pipeline(preprocessor, trainer, best_model_name, models_dir='mode
     print("MODEL SAVING PIPELINE")
     print("="*80)
     
-    print(f"\n[Step 5] Saving model and preprocessor...")
+    print("\n[Step 5] Saving model and preprocessor...")
     create_directory(models_dir)
     
     # Save preprocessor

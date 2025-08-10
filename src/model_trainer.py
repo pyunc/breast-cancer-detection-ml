@@ -7,7 +7,6 @@ Implements various classification models and hyperparameter tuning.
 """
 
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.linear_model import LogisticRegression
@@ -17,7 +16,7 @@ from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV, cross_val_score
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from sklearn.metrics import confusion_matrix, classification_report, roc_curve, precision_recall_curve
+from sklearn.metrics import confusion_matrix, roc_curve
 import joblib
 import os
 
