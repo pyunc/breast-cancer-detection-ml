@@ -75,42 +75,42 @@ spec:
                 configMapKeyRef:
                   name: aula-k8s-config
                   key: APP_SERVER_CONFIG
-        - name: nginx
-          image: nginx:latest
-          ports:
-            - containerPort: 80
-              name: http
-              protocol: TCP
-          resources:
-            limits:
-              cpu: "0.2"
-              memory: "128Mi"
-            requests:
-              cpu: "0.1"
-              memory: "64Mi"
-      nodeSelector:
-        gputype: "true"
-      # node affinity:
-      #weight
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 1
-              preference:
-                matchExpressions:
-                  - key: gputype
-                    operator: In
-                    values:
-                      - "true"
-            - weight: 2
-              preference:
-                matchExpressions:
-                  - key: cloudprovider
-                    operator: In
-                    values:
-                      - aws
-                      - azure
-                      - gcp
+      #   - name: nginx
+      #     image: nginx:latest
+      #     ports:
+      #       - containerPort: 80
+      #         name: http
+      #         protocol: TCP
+      #     resources:
+      #       limits:
+      #         cpu: "0.2"
+      #         memory: "128Mi"
+      #       requests:
+      #         cpu: "0.1"
+      #         memory: "64Mi"
+      # nodeSelector:
+      #   gputype: "true"
+      # # node affinity:
+      # #weight
+      # affinity:
+      #   nodeAffinity:
+      #     preferredDuringSchedulingIgnoredDuringExecution:
+      #       - weight: 1
+      #         preference:
+      #           matchExpressions:
+      #             - key: gputype
+      #               operator: In
+      #               values:
+      #                 - "true"
+      #       - weight: 2
+      #         preference:
+      #           matchExpressions:
+      #             - key: cloudprovider
+      #               operator: In
+      #               values:
+      #                 - aws
+      #                 - azure
+      #                 - gcp
       
 
 ---
@@ -129,13 +129,13 @@ spec:
       # type: LoadBalancer
       port: 8501
       targetPort: 8000
-      nodePort: 30000
+      # nodePort: 30000
     # - name: nginx
     #   port: 80
     #   targetPort: 80
     #   nodePort: 30001
-  # type: LoadBalancer
-  type: NodePort
+  type: LoadBalancer
+  # type: NodePort
 
 ---
 # Horizontal Pod Autoscaler for the inference pipeline
