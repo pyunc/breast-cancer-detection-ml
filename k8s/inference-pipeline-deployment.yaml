@@ -139,7 +139,7 @@ spec:
 
 ---
 # Horizontal Pod Autoscaler for the inference pipeline
-apiVersion: autoscaling/v2beta2
+apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: inference
@@ -183,5 +183,4 @@ spec:
         value: 2
         periodSeconds: 60
 
-    
-  
+
