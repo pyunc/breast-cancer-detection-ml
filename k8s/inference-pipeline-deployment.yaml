@@ -6,10 +6,10 @@ metadata:
   # namespace: dev
 data:
   # Add your configuration data here
-  APP_VERSION_CONFIG: "4.0.0"
+  APP_VERSION_CONFIG: "5.0.0"
   APP_NAME_CONFIG: "prod-configmap-breast-cancer-detection-ml-inference-pipeline"
   APP_AUTHOR_CONFIG: "Paulo Yun Cha"
-  APP_VERSION: "4.0.0"
+  APP_VERSION: "5.0.0"
   APP_NAME: "prod-configmap-breast-cancer-detection-ml-inference-pipeline"
   APP_AUTHOR: "Paulo Yun Cha"
   APP_SERVER_CONFIG: "cloud-prod-env"
