@@ -6,18 +6,44 @@ on:
     pull_request:
         branches: [dev, main]
     workflow_dispatch:
+        inputs:
+            environment:
+                description: 'Environment to deploy to'
+                required: true
+                default: 'dev'
+                type: choice
+                options:
+                - dev
+                - staging
+                - production
+            run_tests:
+                description: 'Run tests'
+                required: false
+                default: true
+                type: boolean
+            custom_tag:
+                description: 'Custom Docker tag (optional)'
+                required: false
+                type: string
 
 jobs:
     primeiro-job:
         name: Primeiro Job
         runs-on: ubuntu-latest
+        outputs:
+            python_version: ${{ steps.setup.outputs.python-version }}
+            build_timestamp: ${{ steps.timestamp.outputs.timestamp }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
             - name: Set up Python
+              id: setup
               uses: actions/setup-python@v4
               with:
                 python-version: '3.11'
+            - name: Generate timestamp
+              id: timestamp
+              run: echo "timestamp=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
             - name: Install uv
               run: curl -LsSf https://astral.sh/uv/install.sh | sh
             - name: Create virtual environment and install dependencies
@@ -26,6 +52,22 @@ jobs:
                 source .venv/bin/activate
                 uv pip install --upgrade pip
                 uv pip install -r requirements.txt
+            - name: Generate build info
+              run: |
+                mkdir -p artifacts
+                echo "Build started at: $(date)" > artifacts/build-info.txt
+                echo "Environment: ${{ github.event.inputs.environment || 'push/pr' }}" >> artifacts/build-info.txt
+                echo "Python version: ${{ steps.setup.outputs.python-version }}" >> artifacts/build-info.txt
+            - name: Upload build info
+              uses: actions/upload-artifact@v4
+              with:
+                name: build-info
+                path: artifacts/build-info.txt
+                retention-days: 30
+            - name: Display build info artifact URL
+              run: |
+                echo "📦 Build Info Artifact URL:"
+                echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/build-info"
             - name: Run script
               run: |
                 variable = "Hello, World!"
@@ -35,6 +77,8 @@ jobs:
     lint:
         runs-on: ubuntu-latest
         needs: primeiro-job
+        outputs:
+            lint_status: ${{ steps.lint.outputs.status }}
         steps:
             - uses: actions/checkout@v4
             - name: Set up Python
@@ -50,15 +94,35 @@ jobs:
                 uv pip install --upgrade pip
                 uv add ruff
             - name: Run linter
+              id: lint
               run: |
                 source .venv/bin/activate
-                uv run ruff check --no-cache --fix
+                uv run ruff check --no-cache --fix --output-format=json > lint-results.json || true
+                echo "status=completed" >> $GITHUB_OUTPUT
+            - name: Upload lint results
+              uses: actions/upload-artifact@v4
+              with:
+                name: lint-results
+                path: lint-results.json
+            - name: Display lint results artifact URL
+              run: |
+                echo "📦 Lint Results Artifact URL:"
+                echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/lint-results"
 
     test:
         runs-on: ubuntu-latest
         needs: lint
+        if: ${{ github.event.inputs.run_tests != 'false' }}
+        outputs:
+            test_status: ${{ steps.test.outputs.status }}
+            coverage: ${{ steps.coverage.outputs.coverage }}
         steps:
             - uses: actions/checkout@v4
+            - name: Download build info
+              uses: actions/download-artifact@v4
+              with:
+                name: build-info
+                path: ./downloaded-artifacts
             - name: Set up Python
               uses: actions/setup-python@v4
               with:
@@ -71,40 +135,97 @@ jobs:
                 source .venv/bin/activate
                 uv pip install --upgrade pip
                 uv pip install -r requirements.txt
-                uv pip install pytest
+                uv pip install pytest pytest-cov
                 uv pip install -e .
             - name: Run tests
+              id: test
               run: |
                 source .venv/bin/activate
-                uv run pytest tests/src -v --cache-clear --rootdir=.
-    # build docker image and push to docker registry
+                uv run pytest tests/src -v --cache-clear --rootdir=. --cov=src --cov-report=xml --cov-report=html
+                echo "status=completed" >> $GITHUB_OUTPUT
+            - name: Generate coverage report
+              id: coverage
+              run: |
+                coverage_percent=$(grep -o 'line-rate="[0-9.]*"' coverage.xml | head -1 | cut -d'"' -f2 | awk '{print $1*100}')
+                echo "coverage=${coverage_percent}%" >> $GITHUB_OUTPUT
+            - name: Upload test results
+              uses: actions/upload-artifact@v4
+              with:
+                name: test-results
+                path: |
+                  coverage.xml
+                  htmlcov/
+                  downloaded-artifacts/
+                retention-days: 30
+            - name: Display test results artifact URL
+              run: |
+                echo "📦 Test Results Artifact URL:"
+                echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/test-results"
+
     ci:
         runs-on: ubuntu-latest
         needs: test
+        outputs:
+            image_tag: ${{ steps.meta.outputs.tags }}
+            image_digest: ${{ steps.build.outputs.digest }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
+            - name: Set image metadata
+              id: meta
+              run: |
+                if [ "${{ github.event.inputs.custom_tag }}" != "" ]; then
+                  tag="${{ github.event.inputs.custom_tag }}"
+                else
+                  tag="v${{ github.run_number }}"
+                fi
+                echo "tags=pauloyuncha/breast-cancer-detection-ml:latest,pauloyuncha/breast-cancer-detection-ml:${tag}" >> $GITHUB_OUTPUT
             - name: authenticate to Docker registry
               uses: docker/login-action@v3.1.0
               with:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKER_TOKEN }}
             - name: Set up Docker Buildx
+              id: build
               uses: docker/build-push-action@v5.3.0
               with:
                   context: .
                   file: Dockerfile
                   push: true
-                  tags: |
-                    pauloyuncha/breast-cancer-detection-ml:latest
-                    pauloyuncha/breast-cancer-detection-ml:v${{ github.run_number }}
-    # deploy to kubernetes cluster
+                  tags: ${{ steps.meta.outputs.tags }}
+            - name: Generate deployment manifest
+              run: |
+                mkdir -p deployment-artifacts
+                echo "Image: ${{ steps.meta.outputs.tags }}" > deployment-artifacts/deployment-info.txt
+                echo "Digest: ${{ steps.build.outputs.digest }}" >> deployment-artifacts/deployment-info.txt
+                echo "Environment: ${{ github.event.inputs.environment || 'auto' }}" >> deployment-artifacts/deployment-info.txt
+                echo "Build timestamp: ${{ needs.primeiro-job.outputs.build_timestamp }}" >> deployment-artifacts/deployment-info.txt
+            - name: Upload deployment artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                name: deployment-artifacts
+                path: deployment-artifacts/
+            - name: Display deployment artifacts URL
+              run: |
+                echo "📦 Deployment Artifacts URL:"
+                echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/deployment-artifacts"
+
     cd:
         runs-on: ubuntu-latest
         needs: [ci]
         steps:
             - name: Checkout code
               uses: actions/checkout@v4.1.5
+            - name: Download deployment artifacts
+              uses: actions/download-artifact@v4
+              with:
+                name: deployment-artifacts
+                path: ./deployment-info
+            - name: Display deployment info
+              run: |
+                echo "=== Deployment Information ==="
+                cat ./deployment-info/deployment-info.txt
+                echo "=== End Deployment Information ==="
             - name: Set up k8s context
               uses: azure/k8s-set-context@v4.0.0
               with:
@@ -116,5 +237,4 @@ jobs:
                 manifests: |
                   ./k8s/inference-pipeline-deployment.yaml
                 images: |
-                  pauloyuncha/breast-cancer-detection-ml:v${{ github.run_number }}
-            
+                  ${{ needs.ci.outputs.image_tag }}
