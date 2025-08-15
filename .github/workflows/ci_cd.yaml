@@ -99,11 +99,20 @@ jobs:
                 source .venv/bin/activate
                 uv run ruff check --no-cache --fix --output-format=json > lint-results.json || true
                 echo "status=completed" >> $GITHUB_OUTPUT
+            # build the lint results artifact
+            - name: Create lint results artifact
+              run: |
+                mkdir -p lint-results
+                if [ -f lint-results.json ]; then
+                  mv lint-results.json lint-results/
+                else
+                  echo "No lint results found." >> lint-results/lint-results.json
+                fi
             - name: Upload lint results
               uses: actions/upload-artifact@v4
               with:
                 name: lint-results
-                path: lint-results.json
+                path: lint-results/lint-results.json
             - name: Display lint results artifact URL
               run: |
                 echo "📦 Lint Results Artifact URL:"
