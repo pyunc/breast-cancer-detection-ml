@@ -2,7 +2,10 @@ name: CI/CD Pipeline
 
 on:
     push:
-        branches: [dev, main]
+        branches: [dev, feat/*]
+        paths:
+            - 'src/**'
+            - 'pipelines/**'
     pull_request:
         branches: [dev, main]
     workflow_dispatch:
@@ -25,6 +28,11 @@ on:
                 description: 'Custom Docker tag (optional)'
                 required: false
                 type: string
+            run_deployment:
+                description: 'Run deployment step in K8s'
+                required: false
+                default: false
+                type: boolean
 
 jobs:
     primeiro-job:
@@ -222,6 +230,7 @@ jobs:
     cd:
         runs-on: ubuntu-latest
         needs: [ci]
+        if: ${{ github.event.inputs.run_deployment == 'true' }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v4.1.5
