@@ -15,14 +15,8 @@ import os
 import numpy as np
 import pandas as pd
 import joblib
-from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import List, Dict, Union, Optional
-import uvicorn
-from fastapi.middleware.cors import CORSMiddleware
 
 
 class ModelPredictor:

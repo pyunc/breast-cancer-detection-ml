@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "breast-cancer-detection-ml"
 version = "0.1.0"
@@ -98,6 +102,7 @@ dependencies = [
     "pydantic-core==2.33.2",
     "pygments==2.19.1",
     "pyparsing==3.2.3",
+    "pytest>=8.4.1",
     "python-dateutil==2.9.0.post0",
     "python-dotenv==1.1.0",
     "python-engineio==4.12.1",
@@ -111,6 +116,7 @@ dependencies = [
     "rfc3339-validator==0.1.4",
     "rfc3986-validator==0.1.1",
     "rpds-py==0.25.1",
+    "ruff>=0.12.8",
     "scikit-learn==1.6.1",
     "scipy==1.15.3",
     "seaborn==0.13.2",
@@ -144,3 +150,9 @@ dependencies = [
     "zope-event==5.0",
     "zope-interface==7.2",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

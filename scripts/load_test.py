@@ -2,6 +2,8 @@ import subprocess
 import json
 import time
 import concurrent.futures
+import argparse  # noqa: E402
+import sys  # noqa: E402
 
 def make_prediction_request(url, features=None, apply_scaling=False, apply_preprocessing=True):
     """
@@ -42,9 +44,6 @@ def run_concurrent_requests(url, num_requests=10, max_workers=5):
                         0.006399, 0.04904, 0.05373, 0.01587, 0.03003, 0.006193, 
                         25.38, 17.33, 184.6, 2019, 0.1622, 0.6656, 0.7119, 0.2654, 0.4601, 0.1189]
             
-            # Vary the preprocessing parameters
-            apply_scaling = bool(i % 2)
-            apply_preprocessing = bool((i + 1) % 2)
             
             # Submit the request to the thread pool
             future = executor.submit(
@@ -65,8 +64,6 @@ def run_concurrent_requests(url, num_requests=10, max_workers=5):
 
 
 # argparse function for url and number of requests and max workers
-import argparse
-import sys
 
 def parse_args():
 

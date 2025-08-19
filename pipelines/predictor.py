@@ -1,14 +1,9 @@
 import os
 import numpy as np
 import pandas as pd
-import joblib
-from sklearn.preprocessing import StandardScaler
-import matplotlib.pyplot as plt
-import seaborn as sns
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
-from typing import List, Dict, Union, Optional
-import uvicorn
+from typing import List, Dict, Optional
 from fastapi.middleware.cors import CORSMiddleware
 # load dot env file
 from dotenv import load_dotenv
@@ -16,7 +11,7 @@ load_dotenv()
 
 
 
-from src.predictor import ModelPredictor, load_model_for_prediction
+from src.predictor import ModelPredictor, load_model_for_prediction  # noqa: E402
 
 # Add FastAPI dependency for model access - this is the improvement
 def get_model_predictor():
