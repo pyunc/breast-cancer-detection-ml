@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
     push:
-        branches: [dev, feat/*]
+        branches: [dev, feat/*, main]
         # paths:
         #     - 'src/**'
         #     - 'pipelines/**'
