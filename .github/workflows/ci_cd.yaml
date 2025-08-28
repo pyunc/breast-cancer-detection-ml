@@ -123,6 +123,7 @@ jobs:
             test_status: ${{ steps.test.outputs.status }}
             coverage: ${{ steps.coverage.outputs.coverage }}
         steps:
+            - uses: actions/checkout@v4
             - name: Set up Python
               uses: actions/setup-python@v4
               with:
