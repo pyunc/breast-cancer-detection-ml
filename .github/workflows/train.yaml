@@ -1,24 +1,35 @@
-name: Train
+name: Training Pipeline
 
 on:
   workflow_call:
     inputs:
-      manifests:
-        description: 'Kubernetes manifests to deploy'
-        required: true
-        type: string
-      images:
-        description: 'Container images to deploy'
-        required: true
-        type: string
       environment:
-        description: 'Environment to deploy to'
+        description: 'Environment to run training in'
         required: false
         default: 'dev'
         type: string
+      python_version:
+        description: 'Python version to use'
+        required: false
+        default: '3.11'
+        type: string
+      tune_hyperparameters:
+        description: 'Enable hyperparameter tuning'
+        required: false
+        default: true
+        type: boolean
     secrets:
-      K8S_CONFIG:
-        description: 'Kubernetes configuration'
+      DO_SPACES_ACCESS_KEY:
+        description: 'DigitalOcean Spaces access key'
+        required: true
+      DO_SPACES_SECRET_KEY:
+        description: 'DigitalOcean Spaces secret key'
+        required: true
+      DO_SPACES_BUCKET:
+        description: 'DigitalOcean Spaces bucket name'
+        required: true
+      DO_SPACES_REGION:
+        description: 'DigitalOcean Spaces region'
         required: true
 
 jobs:
@@ -27,24 +38,39 @@ jobs:
     environment: ${{ inputs.environment }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.1.5
+        uses: actions/checkout@v4
       
-      - name: Display deployment info
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ inputs.python_version }}
+      
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      
+      - name: Create virtual environment and install dependencies
         run: |
-          echo "=== Deployment Information ==="
-          echo "Environment: ${{ inputs.environment }}"
-          echo "Manifests: ${{ inputs.manifests }}"
-          echo "Images: ${{ inputs.images }}"
-          echo "=== End Deployment Information ==="
+          uv venv
+          source .venv/bin/activate
+          uv pip install --upgrade pip
+          uv pip install -r requirements.txt
+          uv pip install -e .
       
-      - name: Set up k8s context
-        uses: azure/k8s-set-context@v4.0.0
-        with:
-          method: kubeconfig
-          kubeconfig: ${{ secrets.K8S_CONFIG }}
+      - name: Run training script
+        run: |
+          source .venv/bin/activate
+          if [ "${{ inputs.tune_hyperparameters }}" == "true" ]; then
+            uv run tools/run.py --run-train --tune
+          else
+            uv run tools/run.py --run-train
+          fi
       
-      - name: Deploy to Kubernetes
-        uses: Azure/k8s-deploy@v5
+      - name: Upload trained model to DigitalOcean Spaces
+        uses: BetaHuhn/do-spaces-action@v2
         with:
-          manifests: ${{ inputs.manifests }}
-          images: ${{ inputs.images }}
+          access_key: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SPACES_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACES_BUCKET }}
+          space_region: ${{ secrets.DO_SPACES_REGION }}
+          source: models/
+          out_dir: models/${{ github.run_number }}-${{ github.sha }}
