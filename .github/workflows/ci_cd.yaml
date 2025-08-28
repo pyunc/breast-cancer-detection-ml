@@ -70,63 +70,9 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    primeiro-job:
-        name: Primeiro Job
-        runs-on: ubuntu-latest
-        container:
-          # python alpine
-          image: python:3.11-alpine
-        outputs:
-            python_version: ${{ steps.setup.outputs.python-version }}
-            build_timestamp: ${{ steps.timestamp.outputs.timestamp }}
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
-            - name: Set up Python
-              id: setup
-              uses: actions/setup-python@v4
-              with:
-                python-version: '3.11'
-            - name: Generate timestamp
-              id: timestamp
-              run: echo "timestamp=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
-            - name: Install uv
-              run: curl -LsSf https://astral.sh/uv/install.sh | sh
-            - name: Create virtual environment and install dependencies
-              run: |
-                uv venv
-                source .venv/bin/activate
-                uv pip install --upgrade pip
-                uv pip install -r requirements.txt
-            - name: Generate build info
-              run: |
-                mkdir -p artifacts
-                echo "Build started at: $(date)" > artifacts/build-info.txt
-                echo "Environment: ${{ github.event.inputs.environment || 'auto' }}" >> artifacts/build-info.txt
-                echo "Python version: ${{ steps.setup.outputs.python-version }}" >> artifacts/build-info.txt
-                echo "Trigger: ${{ github.event_name }}" >> artifacts/build-info.txt
-                if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                  echo "Manual run by: ${{ github.actor }}" >> artifacts/build-info.txt
-                fi
-            - name: Upload build info
-              uses: actions/upload-artifact@v4
-              with:
-                name: build-info
-                path: artifacts/build-info.txt
-                retention-days: 30
-            - name: Display build info artifact URL
-              run: |
-                echo "📦 Build Info Artifact URL:"
-                echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/build-info"
-            - name: Run script
-              run: |
-                variable = "Hello, World!"
-                print(variable)
-              shell: python
 
     lint:
         runs-on: ubuntu-latest
-        needs: primeiro-job
         if: ${{ github.event.inputs.run_linting != 'false' }}
         outputs:
             lint_status: ${{ steps.lint.outputs.status }}
