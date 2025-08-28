@@ -19,6 +19,16 @@ on:
                 - dev
                 - staging
                 - production
+            manifests:
+                description: 'Kubernetes manifests to deploy (multiline)'
+                required: false
+                default: './k8s/inference-pipeline-deployment.yaml'
+                type: string
+            images:
+                description: 'Container images to deploy (use placeholder {IMAGE_TAG} for dynamic image)'
+                required: false
+                default: '{IMAGE_TAG}'
+                type: string
             run_tests:
                 description: 'Run tests'
                 required: false
@@ -33,6 +43,11 @@ on:
                 description: 'Custom Docker tag (optional)'
                 required: false
                 type: string
+            run_training:
+                description: 'Run training step'
+                required: false
+                default: false
+                type: boolean
             run_deployment:
                 description: 'Run deployment step in K8s'
                 required: false
@@ -43,11 +58,24 @@ on:
                 required: false
                 default: false
                 type: boolean
+            python_version:
+                description: 'Python version to use'
+                required: false
+                default: '3.11'
+                type: string
+            
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
     primeiro-job:
         name: Primeiro Job
         runs-on: ubuntu-latest
+        container:
+          # python alpine
+          image: python:3.11-alpine
         outputs:
             python_version: ${{ steps.setup.outputs.python-version }}
             build_timestamp: ${{ steps.timestamp.outputs.timestamp }}
@@ -194,6 +222,40 @@ jobs:
                 echo "📦 Test Results Artifact URL:"
                 echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/test-results"
 
+    train:
+        runs-on: ubuntu-latest
+        needs: test
+        if: ${{ always() && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && github.event.inputs.run_training == 'true' }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                python-version: '3.11'
+            - name: Install uv
+              run: curl -LsSf https://astral.sh/uv/install.sh | sh
+            - name: Create virtual environment and install dependencies
+              run: |
+                uv venv
+                source .venv/bin/activate
+                uv pip install --upgrade pip
+                uv pip install -r requirements.txt
+                uv pip install -e .
+            - name: Run training script
+              run: |
+                source .venv/bin/activate
+                uv run tools/run.py --run-train --tune
+            - name: Upload trained model to DigitalOcean Spaces
+              uses: BetaHuhn/do-spaces-action@v2
+              with:
+                access_key: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+                secret_key: ${{ secrets.DO_SPACES_SECRET_KEY }}
+                space_name: ${{ secrets.DO_SPACES_BUCKET }}
+                space_region: ${{ secrets.DO_SPACES_REGION }}
+                source: models/
+                out_dir: models/${{ github.run_number }}-${{ github.sha }}
+                
     ci:
         runs-on: ubuntu-latest
         needs: test
@@ -244,31 +306,12 @@ jobs:
                 echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/deployment-artifacts"
 
     cd:
-        runs-on: ubuntu-latest
         needs: [ci]
         if: ${{ always() && !cancelled() && needs.ci.result == 'success' && github.event.inputs.run_deployment == 'true' }}
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4.1.5
-            - name: Download deployment artifacts
-              uses: actions/download-artifact@v4
-              with:
-                name: deployment-artifacts
-                path: ./deployment-info
-            - name: Display deployment info
-              run: |
-                echo "=== Deployment Information ==="
-                cat ./deployment-info/deployment-info.txt
-                echo "=== End Deployment Information ==="
-            - name: Set up k8s context
-              uses: azure/k8s-set-context@v4.0.0
-              with:
-                method: kubeconfig
-                kubeconfig: ${{ secrets.K8S_CONFIG }}
-            - name: Execução do Manifesto
-              uses: Azure/k8s-deploy@v5
-              with:
-                manifests: |
-                  ./k8s/inference-pipeline-deployment.yaml
-                images: |
-                  ${{ needs.ci.outputs.image_tag }}
+        uses: ./.github/workflows/deploy.yaml
+        with:
+          manifests: ${{ github.event.inputs.manifests || './k8s/inference-pipeline-deployment.yaml' }}
+          images: ${{ github.event.inputs.images == '{IMAGE_TAG}' && needs.ci.outputs.image_tag || github.event.inputs.images || needs.ci.outputs.image_tag }}
+          environment: ${{ github.event.inputs.environment || 'dev' }}
+        secrets:
+          K8S_CONFIG: ${{ secrets.K8S_CONFIG }}

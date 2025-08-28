@@ -1,0 +1,50 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      manifests:
+        description: 'Kubernetes manifests to deploy'
+        required: true
+        type: string
+      images:
+        description: 'Container images to deploy'
+        required: true
+        type: string
+      environment:
+        description: 'Environment to deploy to'
+        required: false
+        default: 'dev'
+        type: string
+    secrets:
+      K8S_CONFIG:
+        description: 'Kubernetes configuration'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.5
+      
+      - name: Display deployment info
+        run: |
+          echo "=== Deployment Information ==="
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Manifests: ${{ inputs.manifests }}"
+          echo "Images: ${{ inputs.images }}"
+          echo "=== End Deployment Information ==="
+      
+      - name: Set up k8s context
+        uses: azure/k8s-set-context@v4.0.0
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.K8S_CONFIG }}
+      
+      - name: Deploy to Kubernetes
+        uses: Azure/k8s-deploy@v5
+        with:
+          manifests: ${{ inputs.manifests }}
+          images: ${{ inputs.images }}
