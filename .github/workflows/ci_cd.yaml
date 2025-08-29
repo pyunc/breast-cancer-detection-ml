@@ -54,7 +54,7 @@ on:
                 default: false
                 type: boolean
             run_ci:
-                description: 'Skip Docker build and push'
+                description: 'Run ci step by Docker build and push'
                 required: false
                 default: false
                 type: boolean
