@@ -16,6 +16,14 @@ on:
         required: false
         default: 'dev'
         type: string
+      model_url:
+        description: 'Remote model URL'
+        required: false
+        type: string
+      preprocessor_url:
+        description: 'Remote preprocessor URL'
+        required: false
+        type: string
     secrets:
       K8S_CONFIG:
         description: 'Kubernetes configuration'
@@ -35,7 +43,27 @@ jobs:
           echo "Environment: ${{ inputs.environment }}"
           echo "Manifests: ${{ inputs.manifests }}"
           echo "Images: ${{ inputs.images }}"
+          echo "Model URL: ${{ inputs.model_url }}"
+          echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
           echo "=== End Deployment Information ==="
+      
+      - name: Prepare manifests (inject model URLs)
+        if: ${{ inputs.model_url != '' || inputs.preprocessor_url != '' }}
+        run: |
+          set -euo pipefail
+          echo "Original manifest snippet:" && head -n 60 ${{ inputs.manifests }} || true
+          tmp_file=$(mktemp)
+          cp ${{ inputs.manifests }} $tmp_file
+          if [ "${{ inputs.model_url }}" != "" ]; then
+            sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" $tmp_file
+          fi
+          if [ "${{ inputs.preprocessor_url }}" != "" ]; then
+            sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" $tmp_file
+          fi
+          echo "Processed manifest diff:" && diff -u ${{ inputs.manifests }} $tmp_file || true
+          mv $tmp_file ${{ inputs.manifests }}
+          grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
+          grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
       
       - name: Set up k8s context
         uses: azure/k8s-set-context@v4.0.0

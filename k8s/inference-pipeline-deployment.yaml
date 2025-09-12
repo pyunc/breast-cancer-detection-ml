@@ -40,7 +40,9 @@ spec:
             - python3
             - tools/ml_service.py
             - --model-path
-            - /opt/ml/models/logistic_regression.joblib
+            - __MODEL_URL__
+            - --preprocessor-path
+            - __PREPROCESSOR_URL__
             - --port
             - "8000"
           ports:

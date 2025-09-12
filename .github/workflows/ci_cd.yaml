@@ -63,6 +63,14 @@ on:
                 required: false
                 default: '3.11'
                 type: string
+            model_url:
+                description: 'Override model URL (skip training)'
+                required: false
+                type: string
+            preprocessor_url:
+                description: 'Override preprocessor URL (skip training)'
+                required: false
+                type: string
             
 
 concurrency:
@@ -216,7 +224,7 @@ jobs:
                 echo "Image: ${{ steps.meta.outputs.tags }}" > deployment-artifacts/deployment-info.txt
                 echo "Digest: ${{ steps.build.outputs.digest }}" >> deployment-artifacts/deployment-info.txt
                 echo "Environment: ${{ github.event.inputs.environment || 'auto' }}" >> deployment-artifacts/deployment-info.txt
-                echo "Build timestamp: ${{ needs.primeiro-job.outputs.build_timestamp }}" >> deployment-artifacts/deployment-info.txt
+                date -u "+%Y-%m-%dT%H:%M:%SZ" >> deployment-artifacts/deployment-info.txt
             - name: Upload deployment artifacts
               uses: actions/upload-artifact@v4
               with:
@@ -235,5 +243,7 @@ jobs:
           manifests: ${{ github.event.inputs.manifests || './k8s/inference-pipeline-deployment.yaml' }}
           images: ${{ github.event.inputs.images == '{IMAGE_TAG}' && needs.ci.outputs.image_tag || github.event.inputs.images || needs.ci.outputs.image_tag }}
           environment: ${{ github.event.inputs.environment || 'dev' }}
+          model_url: ${{ github.event.inputs.model_url }}
+          preprocessor_url: ${{ github.event.inputs.preprocessor_url }}
         secrets:
           K8S_CONFIG: ${{ secrets.K8S_CONFIG }}
