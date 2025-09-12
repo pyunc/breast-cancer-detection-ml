@@ -24,9 +24,13 @@ on:
         description: 'Remote preprocessor URL'
         required: false
         type: string
+      cluster_name:
+        description: 'DigitalOcean Kubernetes cluster name or ID'
+        required: true
+        type: string
     secrets:
-      K8S_CONFIG:
-        description: 'Kubernetes configuration'
+      DO_API_TOKEN:
+        description: 'DigitalOcean API token (read/write)'
         required: true
 
 jobs:
@@ -43,6 +47,7 @@ jobs:
           echo "Environment: ${{ inputs.environment }}"
           echo "Manifests: ${{ inputs.manifests }}"
           echo "Images: ${{ inputs.images }}"
+          echo "Cluster: ${{ inputs.cluster_name }}"
           echo "Model URL: ${{ inputs.model_url }}"
           echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
           echo "=== End Deployment Information ==="
@@ -65,14 +70,50 @@ jobs:
           grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
           grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
       
-      - name: Set up k8s context
-        uses: azure/k8s-set-context@v4.0.0
-        with:
-          method: kubeconfig
-          kubeconfig: ${{ secrets.K8S_CONFIG }}
+      - name: Install doctl
+        run: |
+          set -e
+          curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
+          tar -xzf doctl.tgz
+          sudo mv doctl /usr/local/bin/
+          doctl version
       
-      - name: Deploy to Kubernetes
-        uses: Azure/k8s-deploy@v5
-        with:
-          manifests: ${{ inputs.manifests }}
-          images: ${{ inputs.images }}
+      - name: Authenticate doctl
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          doctl auth init -t "$DO_API_TOKEN"
+          doctl account get
+      
+      - name: Fetch kubeconfig
+        run: |
+          doctl kubernetes cluster kubeconfig save "${{ inputs.cluster_name }}"
+          kubectl config current-context
+          kubectl get nodes
+      
+      - name: Apply manifests
+        run: |
+          set -e
+            kubectl apply -f ${{ inputs.manifests }}
+          echo '--- Deployment ---'
+          kubectl get deploy -o wide
+          echo '--- Pods (pre-rollout) ---'
+          kubectl get pods -l app=inference -o wide || true
+      
+      - name: Wait for rollout
+        run: |
+          set -e
+          kubectl rollout status deployment/breast-cancer-detection-ml-inference-pipeline-deployment --timeout=300s
+          echo '--- Pods (post-rollout) ---'
+          kubectl get pods -l app=inference -o wide
+      
+      - name: Show services
+        run: |
+          kubectl get svc inference -o wide || true
+      
+      - name: Summary
+        run: |
+          echo "Deployment complete" >> $GITHUB_STEP_SUMMARY
+          echo "Image(s): ${{ inputs.images }}" >> $GITHUB_STEP_SUMMARY
+          echo "Model URL: ${{ inputs.model_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "Preprocessor URL: ${{ inputs.preprocessor_url }}" >> $GITHUB_STEP_SUMMARY

@@ -132,7 +132,7 @@ def initialize_model(model_path, preprocessor_path=None):
         filename = os.path.basename(path.split("?")[0])
         local_path = os.path.join(target_dir, f"remote_{filename}")
         if not os.path.exists(local_path):
-            print(f"Downloading remote artifact fro DO bucket: {path}")
+            print(f"Downloading remote artifact from DO bucket: {path}")
             resp = requests.get(path, timeout=120)
             resp.raise_for_status()
             with open(local_path, "wb") as f:
