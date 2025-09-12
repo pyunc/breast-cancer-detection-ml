@@ -52,7 +52,11 @@ on:
                 description: 'Override preprocessor URL (skip training)'
                 required: false
                 type: string
-            
+            # Optional explicit cluster name; leave blank to auto-detect first DOKS cluster
+            cluster_name:
+                description: 'Explicit DigitalOcean Kubernetes cluster name (optional)'
+                required: false
+                type: string
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -219,5 +223,6 @@ jobs:
           environment: ${{ github.event.inputs.environment || 'dev' }}
           model_url: ${{ github.event.inputs.model_url }}
           preprocessor_url: ${{ github.event.inputs.preprocessor_url }}
-        secrets:
-          K8S_CONFIG: ${{ secrets.K8S_CONFIG }}
+          # cluster_name intentionally omitted to allow auto-resolution in deploy workflow when blank
+          cluster_name: ${{ github.event.inputs.cluster_name }}
+        secrets: inherit

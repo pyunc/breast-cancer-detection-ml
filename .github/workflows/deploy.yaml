@@ -25,8 +25,8 @@ on:
         required: false
         type: string
       cluster_name:
-        description: 'DigitalOcean Kubernetes cluster name or ID'
-        required: true
+        description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
+        required: false
         type: string
     secrets:
       DO_API_TOKEN:
@@ -41,13 +41,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4.1.5
       
-      - name: Display deployment info
+      - name: Display initial deployment info
         run: |
-          echo "=== Deployment Information ==="
+          echo "=== Deployment Information (Initial) ==="
           echo "Environment: ${{ inputs.environment }}"
           echo "Manifests: ${{ inputs.manifests }}"
           echo "Images: ${{ inputs.images }}"
-          echo "Cluster: ${{ inputs.cluster_name }}"
+          echo "Requested Cluster (may be blank for auto): ${{ inputs.cluster_name }}"
           echo "Model URL: ${{ inputs.model_url }}"
           echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
           echo "=== End Deployment Information ==="
@@ -85,16 +85,31 @@ jobs:
           doctl auth init -t "$DO_API_TOKEN"
           doctl account get
       
-      - name: Fetch kubeconfig
+      - name: Resolve cluster and fetch kubeconfig
+        id: resolve_cluster
         run: |
-          doctl kubernetes cluster kubeconfig save "${{ inputs.cluster_name }}"
+          set -e
+          if [ -z "${{ inputs.cluster_name }}" ]; then
+            echo "No cluster_name provided. Auto-selecting first available cluster.";
+            CLUSTER_NAME=$(doctl kubernetes cluster list --format Name --no-header | head -n1)
+            if [ -z "$CLUSTER_NAME" ]; then
+              echo "No Kubernetes clusters found for this token." >&2
+              exit 1
+            fi
+          else
+            CLUSTER_NAME='${{ inputs.cluster_name }}'
+          fi
+          echo "Using cluster: $CLUSTER_NAME"
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          # Short expiry for security; adjust if needed
+          doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 600
           kubectl config current-context
           kubectl get nodes
       
       - name: Apply manifests
         run: |
           set -e
-            kubectl apply -f ${{ inputs.manifests }}
+          kubectl apply -f ${{ inputs.manifests }}
           echo '--- Deployment ---'
           kubectl get deploy -o wide
           echo '--- Pods (pre-rollout) ---'
@@ -113,7 +128,9 @@ jobs:
       
       - name: Summary
         run: |
+          RESOLVED_CLUSTER=${{ steps.resolve_cluster.outputs.cluster_name || inputs.cluster_name }}
           echo "Deployment complete" >> $GITHUB_STEP_SUMMARY
           echo "Image(s): ${{ inputs.images }}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster: ${RESOLVED_CLUSTER}" >> $GITHUB_STEP_SUMMARY
           echo "Model URL: ${{ inputs.model_url }}" >> $GITHUB_STEP_SUMMARY
           echo "Preprocessor URL: ${{ inputs.preprocessor_url }}" >> $GITHUB_STEP_SUMMARY
