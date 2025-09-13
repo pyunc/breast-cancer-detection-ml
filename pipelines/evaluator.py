@@ -10,7 +10,7 @@ from src.model_evaluator import evaluate_model
 def evaluate_pipeline(model, X_test, y_test, model_name, X_train=None, y_train=None, visualize=False):
     """Run the model evaluation step of the pipeline."""
     print("\n" + "="*80)
-    print("MODEL EVALUATION PIPELINE")
+    print("MODEL EVALUATION PIPELINE STAGE")
     print("="*80)
     
     print("\n[Step 4] Evaluating best model...")

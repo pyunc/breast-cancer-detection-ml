@@ -73,28 +73,39 @@ jobs:
       - name: Inject built image into manifest
         run: |
           set -euo pipefail
-          echo "Images input raw: ${{ inputs.images }}"
-          SELECTED_IMAGE=$(echo "${{ inputs.images }}" | tr ',' '\n' | tail -n1)
+          RAW_IMAGES='${{ inputs.images }}'
+          SELECTED_IMAGE=$(printf '%s' "$RAW_IMAGES" | tr ',' '\n' | tail -n1 | tr -d '[:space:]')
           if [ -z "$SELECTED_IMAGE" ]; then
-            echo "Could not determine image from inputs.images" >&2
-            exit 1
-          fi
-          echo "Selected image: $SELECTED_IMAGE"
-          # Replace IMAGE_PLACEHOLDER specifically
-          if grep -q 'IMAGE_PLACEHOLDER' "${{ inputs.manifests }}"; then
-            sed -i "s|IMAGE_PLACEHOLDER|$SELECTED_IMAGE|" "${{ inputs.manifests }}"
+            echo "No valid image tag resolved" >&2; exit 1; fi
+          echo "Resolved image: $SELECTED_IMAGE"
+          if grep -q '^\s*image: IMAGE_PLACEHOLDER' "${{ inputs.manifests }}"; then
+            sed -i -E "s|(^[[:space:]]*image:)[[:space:]]*IMAGE_PLACEHOLDER|\1 ${SELECTED_IMAGE}|" "${{ inputs.manifests }}"
           else
-            echo "WARNING: IMAGE_PLACEHOLDER not found; attempting first image: line replacement" >&2
-            sed -i "0,/^ *image:/{s|^ *image:.*$|  image: $SELECTED_IMAGE|}" "${{ inputs.manifests }}"
+            echo 'ERROR: IMAGE_PLACEHOLDER not found (refusing unsafe replacement).' >&2; exit 1
           fi
-          echo "Final image line:" && grep -n 'image:' "${{ inputs.manifests }}" | head -1
+          echo 'Image replacement done.'
+          grep -n 'image:' "${{ inputs.manifests }}" | head -1
+      
+      - name: Show final manifest snippet (debug)
+        run: |
+          echo '--- Container section (first 120 lines after Deployment kind) ---'
+          awk 'f==1{print} /kind: Deployment/{f=1}' "${{ inputs.manifests }}" | head -n120
+          echo '--- Image line context ---'
+          grep -n 'image:' "${{ inputs.manifests }}" | head -3 || true
+      
+      - name: Validate manifest (client-side dry run)
+        run: |
+          set -e
+          # Use kubectl schema validation without contacting cluster (dry-run=client)
+          kubectl apply --dry-run=client -f ${{ inputs.manifests }} > /dev/null
+          echo 'YAML validation (dry-run client) passed.'
       
       - name: Install doctl
         run: |
           set -e
           curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
           tar -xzf doctl.tgz
-          sudo mv doctl /usr/local/bin/
+            sudo mv doctl /usr/local/bin/
           doctl version
       
       - name: Authenticate doctl
