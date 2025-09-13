@@ -4,3 +4,5 @@
     ,
     "apply_scaling": true
   }' -->
+
+  [![CI/CD Pipeline](https://github.com/pyunc/breast-cancer-detection-ml/actions/workflows/ci_cd.yaml/badge.svg?branch=main)](https://github.com/pyunc/breast-cancer-detection-ml/actions/workflows/ci_cd.yaml)
