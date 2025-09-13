@@ -10,7 +10,7 @@ from src.data_loader import load_data
 def load_data_pipeline():
     """Run the data loading step of the pipeline."""
     print("\n" + "="*80)
-    print("DATA LOADING PIPELINE")
+    print("DATA LOADING PIPELINE FROM pipelines/data_loader.py")
     print("="*80)
     
     print("\n[Step 1] Loading data...")
