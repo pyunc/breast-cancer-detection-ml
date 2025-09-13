@@ -56,7 +56,7 @@ jobs:
         if: ${{ inputs.model_url != '' || inputs.preprocessor_url != '' }}
         run: |
           set -euo pipefail
-          echo "Original manifest snippet:" && head -n 60 ${{ inputs.manifests }} || true
+          echo "Original manifest snippet:" && head -n 80 ${{ inputs.manifests }} || true
           tmp_file=$(mktemp)
           cp ${{ inputs.manifests }} $tmp_file
           if [ "${{ inputs.model_url }}" != "" ]; then
@@ -65,10 +65,29 @@ jobs:
           if [ "${{ inputs.preprocessor_url }}" != "" ]; then
             sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" $tmp_file
           fi
-          echo "Processed manifest diff:" && diff -u ${{ inputs.manifests }} $tmp_file || true
+          echo "Processed manifest diff (model/preprocessor):" && diff -u ${{ inputs.manifests }} $tmp_file || true
           mv $tmp_file ${{ inputs.manifests }}
           grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
           grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
+      
+      - name: Inject built image into manifest
+        run: |
+          set -euo pipefail
+          echo "Images input raw: ${{ inputs.images }}"
+          SELECTED_IMAGE=$(echo "${{ inputs.images }}" | tr ',' '\n' | tail -n1)
+          if [ -z "$SELECTED_IMAGE" ]; then
+            echo "Could not determine image from inputs.images" >&2
+            exit 1
+          fi
+          echo "Selected image: $SELECTED_IMAGE"
+          # Replace IMAGE_PLACEHOLDER specifically
+          if grep -q 'IMAGE_PLACEHOLDER' "${{ inputs.manifests }}"; then
+            sed -i "s|IMAGE_PLACEHOLDER|$SELECTED_IMAGE|" "${{ inputs.manifests }}"
+          else
+            echo "WARNING: IMAGE_PLACEHOLDER not found; attempting first image: line replacement" >&2
+            sed -i "0,/^ *image:/{s|^ *image:.*$|  image: $SELECTED_IMAGE|}" "${{ inputs.manifests }}"
+          fi
+          echo "Final image line:" && grep -n 'image:' "${{ inputs.manifests }}" | head -1
       
       - name: Install doctl
         run: |
@@ -101,7 +120,6 @@ jobs:
           fi
           echo "Using cluster: $CLUSTER_NAME"
           echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
-          # Short expiry for security; adjust if needed
           doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 600
           kubectl config current-context
           kubectl get nodes

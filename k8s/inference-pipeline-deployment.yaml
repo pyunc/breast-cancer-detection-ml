@@ -22,7 +22,7 @@ metadata:
   name: breast-cancer-detection-ml-inference-pipeline-deployment
   # namespace: dev
 spec:
-  replicas: 4
+  replicas: 1
   selector:
     matchLabels:
       app: inference
@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: inference
-          image: pauloyuncha/breast-cancer-detection-ml:v13
+          image: IMAGE_PLACEHOLDER
           command: ["uv"]
           args:
             - run
