@@ -9,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 load_dotenv()
 
+# Added import for remote artifact download
+import requests  # noqa: E402
+
 
 
 from src.predictor import ModelPredictor, load_model_for_prediction  # noqa: E402
@@ -91,11 +94,59 @@ app.add_middleware(
 model_predictor = None
 class_names = ['Benign', 'Malignant']
 
+#TODO load model from digital ocean space or local path based on env variable
+# TODO think on integration with cloud
+# TODO in inference-pipeline-deployment.yaml for this part 
+# - --model-path
+# https://breast-cancer-detection-ml.fra1.cdn.digitaloceanspaces.com/models/29-0cb1adcc63c10a4b5b571bf5dbe221edf4e0c82d/logistic_regression.joblib
+# - /opt/ml/models/logistic_regression.joblib
+# --preprocessor-path
+# https://breast-cancer-detection-ml.fra1.cdn.digitaloceanspaces.com/models/29-0cb1adcc63c10a4b5b571bf5dbe221edf4e0c82d/preprocessor.joblib
+
+# https://breast-cancer-detection-ml.fra1.cdn.digitaloceanspaces.com/models/29-0cb1adcc63c10a4b5b571bf5dbe221edf4e0c82d/logistic_regression.joblib
+# https://breast-cancer-detection-ml.fra1.cdn.digitaloceanspaces.com/models/29-0cb1adcc63c10a4b5b571bf5dbe221edf4e0c82d/preprocessor.joblib
+# default local 
+
+# i have to direct to the digital ocean bucket and load from there
+
 # Add an initialization function to be called at startup
 def initialize_model(model_path, preprocessor_path=None):
-    """Initialize the model predictor when the API starts."""
+    """Initialize the model predictor when the API starts.
+
+    Supports remote (HTTP/HTTPS) artifact download and environment variable fallbacks:
+      - MODEL_URL
+      - PREPROCESSOR_URL
+    """
     global model_predictor
+
+    # Environment variable fallback if arguments are empty/None
+    if not model_path:
+        model_path = os.getenv("MODEL_URL")
+    if not preprocessor_path:
+        preprocessor_path = os.getenv("PREPROCESSOR_URL")
+
+    def _download_if_url(path: str, target_dir: str = "/opt/ml/models"):
+        if not path or not path.startswith(("http://", "https://")):
+            return path
+        os.makedirs(target_dir, exist_ok=True)
+        filename = os.path.basename(path.split("?")[0])
+        local_path = os.path.join(target_dir, f"remote_{filename}")
+        if not os.path.exists(local_path):
+            print(f"Downloading remote artifact from DO bucket in stage branch: {path}")
+            resp = requests.get(path, timeout=120)
+            resp.raise_for_status()
+            with open(local_path, "wb") as f:
+                f.write(resp.content)
+            print(f"Saved to {local_path}")
+        else:
+            print(f"Using cached artifact at {local_path}")
+        return local_path
+
     try:
+        model_path = _download_if_url(model_path)
+        if preprocessor_path:
+            preprocessor_path = _download_if_url(preprocessor_path)
+
         model_predictor = load_model_for_prediction(
             model_path=model_path,
             preprocessor_path=preprocessor_path
@@ -220,3 +271,4 @@ async def model_info(predictor: ModelPredictor = Depends(get_model_predictor)):
         
         info["top_features"] = importances.to_dict()
     
+    return info

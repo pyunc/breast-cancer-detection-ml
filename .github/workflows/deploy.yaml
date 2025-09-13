@@ -1,0 +1,136 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      manifests:
+        description: 'Kubernetes manifests to deploy'
+        required: true
+        type: string
+      images:
+        description: 'Container images to deploy'
+        required: true
+        type: string
+      environment:
+        description: 'Environment to deploy to'
+        required: false
+        default: 'dev'
+        type: string
+      model_url:
+        description: 'Remote model URL'
+        required: false
+        type: string
+      preprocessor_url:
+        description: 'Remote preprocessor URL'
+        required: false
+        type: string
+      cluster_name:
+        description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
+        required: false
+        type: string
+    secrets:
+      DO_API_TOKEN:
+        description: 'DigitalOcean API token (read/write)'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.5
+      
+      - name: Display initial deployment info
+        run: |
+          echo "=== Deployment Information (Initial) ==="
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Manifests: ${{ inputs.manifests }}"
+          echo "Images: ${{ inputs.images }}"
+          echo "Requested Cluster (may be blank for auto): ${{ inputs.cluster_name }}"
+          echo "Model URL: ${{ inputs.model_url }}"
+          echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
+          echo "=== End Deployment Information ==="
+      
+      - name: Prepare manifests (inject model URLs)
+        if: ${{ inputs.model_url != '' || inputs.preprocessor_url != '' }}
+        run: |
+          set -euo pipefail
+          echo "Original manifest snippet:" && head -n 60 ${{ inputs.manifests }} || true
+          tmp_file=$(mktemp)
+          cp ${{ inputs.manifests }} $tmp_file
+          if [ "${{ inputs.model_url }}" != "" ]; then
+            sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" $tmp_file
+          fi
+          if [ "${{ inputs.preprocessor_url }}" != "" ]; then
+            sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" $tmp_file
+          fi
+          echo "Processed manifest diff:" && diff -u ${{ inputs.manifests }} $tmp_file || true
+          mv $tmp_file ${{ inputs.manifests }}
+          grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
+          grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
+      
+      - name: Install doctl
+        run: |
+          set -e
+          curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
+          tar -xzf doctl.tgz
+          sudo mv doctl /usr/local/bin/
+          doctl version
+      
+      - name: Authenticate doctl
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          doctl auth init -t "$DO_API_TOKEN"
+          doctl account get
+      
+      - name: Resolve cluster and fetch kubeconfig
+        id: resolve_cluster
+        run: |
+          set -e
+          if [ -z "${{ inputs.cluster_name }}" ]; then
+            echo "No cluster_name provided. Auto-selecting first available cluster.";
+            CLUSTER_NAME=$(doctl kubernetes cluster list --format Name --no-header | head -n1)
+            if [ -z "$CLUSTER_NAME" ]; then
+              echo "No Kubernetes clusters found for this token." >&2
+              exit 1
+            fi
+          else
+            CLUSTER_NAME='${{ inputs.cluster_name }}'
+          fi
+          echo "Using cluster: $CLUSTER_NAME"
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          # Short expiry for security; adjust if needed
+          doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 600
+          kubectl config current-context
+          kubectl get nodes
+      
+      - name: Apply manifests
+        run: |
+          set -e
+          kubectl apply -f ${{ inputs.manifests }}
+          echo '--- Deployment ---'
+          kubectl get deploy -o wide
+          echo '--- Pods (pre-rollout) ---'
+          kubectl get pods -l app=inference -o wide || true
+      
+      - name: Wait for rollout
+        run: |
+          set -e
+          kubectl rollout status deployment/breast-cancer-detection-ml-inference-pipeline-deployment --timeout=300s
+          echo '--- Pods (post-rollout) ---'
+          kubectl get pods -l app=inference -o wide
+      
+      - name: Show services
+        run: |
+          kubectl get svc inference -o wide || true
+      
+      - name: Summary
+        run: |
+          RESOLVED_CLUSTER=${{ steps.resolve_cluster.outputs.cluster_name || inputs.cluster_name }}
+          echo "Deployment complete" >> $GITHUB_STEP_SUMMARY
+          echo "Image(s): ${{ inputs.images }}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster: ${RESOLVED_CLUSTER}" >> $GITHUB_STEP_SUMMARY
+          echo "Model URL: ${{ inputs.model_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "Preprocessor URL: ${{ inputs.preprocessor_url }}" >> $GITHUB_STEP_SUMMARY

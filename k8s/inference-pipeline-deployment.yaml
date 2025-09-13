@@ -22,7 +22,7 @@ metadata:
   name: breast-cancer-detection-ml-inference-pipeline-deployment
   # namespace: dev
 spec:
-  replicas: 4
+  replicas: 1
   selector:
     matchLabels:
       app: inference
@@ -33,14 +33,16 @@ spec:
     spec:
       containers:
         - name: inference
-          image: pauloyuncha/breast-cancer-detection-ml:v13
+          image: pauloyuncha/breast-cancer-detection-ml:latest
           command: ["uv"]
           args:
             - run
             - python3
             - tools/ml_service.py
             - --model-path
-            - /opt/ml/models/logistic_regression.joblib
+            - __MODEL_URL__
+            - --preprocessor-path
+            - __PREPROCESSOR_URL__
             - --port
             - "8000"
           ports:
