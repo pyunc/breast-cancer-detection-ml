@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: inference
-          image: IMAGE_PLACEHOLDER
+          image: pauloyuncha/breast-cancer-detection-ml:latest
           command: ["uv"]
           args:
             - run

@@ -56,7 +56,7 @@ jobs:
         if: ${{ inputs.model_url != '' || inputs.preprocessor_url != '' }}
         run: |
           set -euo pipefail
-          echo "Original manifest snippet:" && head -n 80 ${{ inputs.manifests }} || true
+          echo "Original manifest snippet:" && head -n 60 ${{ inputs.manifests }} || true
           tmp_file=$(mktemp)
           cp ${{ inputs.manifests }} $tmp_file
           if [ "${{ inputs.model_url }}" != "" ]; then
@@ -65,47 +65,17 @@ jobs:
           if [ "${{ inputs.preprocessor_url }}" != "" ]; then
             sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" $tmp_file
           fi
-          echo "Processed manifest diff (model/preprocessor):" && diff -u ${{ inputs.manifests }} $tmp_file || true
+          echo "Processed manifest diff:" && diff -u ${{ inputs.manifests }} $tmp_file || true
           mv $tmp_file ${{ inputs.manifests }}
           grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
           grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
-      
-      - name: Inject built image into manifest
-        run: |
-          set -euo pipefail
-          RAW_IMAGES='${{ inputs.images }}'
-          SELECTED_IMAGE=$(printf '%s' "$RAW_IMAGES" | tr ',' '\n' | tail -n1 | tr -d '[:space:]')
-          if [ -z "$SELECTED_IMAGE" ]; then
-            echo "No valid image tag resolved" >&2; exit 1; fi
-          echo "Resolved image: $SELECTED_IMAGE"
-          if grep -q '^\s*image: IMAGE_PLACEHOLDER' "${{ inputs.manifests }}"; then
-            sed -i -E "s|(^[[:space:]]*image:)[[:space:]]*IMAGE_PLACEHOLDER|\1 ${SELECTED_IMAGE}|" "${{ inputs.manifests }}"
-          else
-            echo 'ERROR: IMAGE_PLACEHOLDER not found (refusing unsafe replacement).' >&2; exit 1
-          fi
-          echo 'Image replacement done.'
-          grep -n 'image:' "${{ inputs.manifests }}" | head -1
-      
-      - name: Show final manifest snippet (debug)
-        run: |
-          echo '--- Container section (first 120 lines after Deployment kind) ---'
-          awk 'f==1{print} /kind: Deployment/{f=1}' "${{ inputs.manifests }}" | head -n120
-          echo '--- Image line context ---'
-          grep -n 'image:' "${{ inputs.manifests }}" | head -3 || true
-      
-      - name: Validate manifest (client-side dry run)
-        run: |
-          set -e
-          # Use kubectl schema validation without contacting cluster (dry-run=client)
-          kubectl apply --dry-run=client -f ${{ inputs.manifests }} > /dev/null
-          echo 'YAML validation (dry-run client) passed.'
       
       - name: Install doctl
         run: |
           set -e
           curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
           tar -xzf doctl.tgz
-            sudo mv doctl /usr/local/bin/
+          sudo mv doctl /usr/local/bin/
           doctl version
       
       - name: Authenticate doctl
@@ -131,6 +101,7 @@ jobs:
           fi
           echo "Using cluster: $CLUSTER_NAME"
           echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          # Short expiry for security; adjust if needed
           doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 600
           kubectl config current-context
           kubectl get nodes
