@@ -109,8 +109,13 @@ jobs:
           echo "Original manifest (first 60 lines):" && head -n60 "$MANIFEST" || true
           tmp_file=$(mktemp)
           cp "$MANIFEST" "$tmp_file"
+          # Dynamic job name to avoid immutable field conflicts
+          JOB_NAME="breast-cancer-train-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          sed -i "s|__JOB_NAME__|$JOB_NAME|g" "$tmp_file"
           sed -i "s|__IMAGE__|$IMAGE|g" "$tmp_file"
           sed -i "s|__TUNE_FLAG__|$TUNE|g" "$tmp_file"
+          echo "Using job name: $JOB_NAME"
+          echo "job_name=$JOB_NAME" >> $GITHUB_OUTPUT
           echo "Diff after substitutions:" && diff -u "$MANIFEST" "$tmp_file" || true
           mv "$tmp_file" "$MANIFEST"
           echo '--- Final manifest snippet ---'
@@ -119,6 +124,7 @@ jobs:
       - name: Apply training Job
         run: |
           set -e
+          echo "Applying manifest with job name from previous step"
           kubectl apply -f "$MANIFEST"
           echo 'Current Jobs:'
           kubectl get jobs -l app=train -o wide || true
@@ -128,7 +134,11 @@ jobs:
       - name: Wait for Job completion
         run: |
           set -e
-          JOB_NAME=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}')
+          JOB_NAME="${{ steps.prep.outputs.job_name }}"
+          if [ -z "$JOB_NAME" ]; then
+            echo "Falling back to list (output missing)";
+            JOB_NAME=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}')
+          fi
           echo "Waiting for Job: $JOB_NAME"
           for i in $(seq 1 60); do
             S=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.succeeded}') || true
@@ -148,14 +158,15 @@ jobs:
       - name: Collect model artifacts (list)
         run: |
           set -e
-          POD=$(kubectl get pods -l job-name=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}') -o jsonpath='{.items[0].metadata.name}')
+          JOB_NAME="${{ steps.prep.outputs.job_name }}"
+          POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
           echo "Using pod $POD to list model artifacts"
           kubectl exec "$POD" -- bash -c 'ls -R models || echo "models directory missing"'
 
       - name: Download artifacts from pod
         run: |
           set -e
-          JOB_NAME=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}')
+          JOB_NAME="${{ steps.prep.outputs.job_name }}"
           POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
           mkdir -p models
           kubectl cp "$POD":/app/models ./models || echo "No models copied"
@@ -178,3 +189,4 @@ jobs:
           echo "Image: $IMAGE" >> $GITHUB_STEP_SUMMARY
           echo "Tune: $TUNE" >> $GITHUB_STEP_SUMMARY
           echo "Cluster: ${{ steps.resolve_cluster.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "Job: ${{ steps.prep.outputs.job_name }}" >> $GITHUB_STEP_SUMMARY

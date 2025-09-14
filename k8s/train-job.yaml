@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: breast-cancer-detection-ml-train-pipeline-job
+  name: __JOB_NAME__
 spec:
   backoffLimit: 0
   template:
@@ -12,8 +12,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: train
-          # __IMAGE__ or pauloyuncha/breast-cancer-detection-ml:latest
-          image: pauloyuncha/breast-cancer-detection-ml:latest
+          # Image will be injected by CI via sed replacing __IMAGE__
+          image: __IMAGE__
           imagePullPolicy: IfNotPresent
           workingDir: /opt/ml/
           command: ["bash","-c"]
