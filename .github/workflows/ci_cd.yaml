@@ -29,7 +29,7 @@ on:
             run_ci:
                 description: 'Run ci step by Docker build and push'
                 required: false
-                default: false
+                default: true
                 type: boolean
 
 concurrency:
