@@ -1,0 +1,59 @@
+name: CI/CD Pipeline Training
+
+on:
+    push:
+        branches: [dev, feat/*, main]
+        paths:
+            - 'src/**'
+            - 'pipelines/**'
+    pull_request:
+        branches: [dev, main]
+    workflow_dispatch:
+        inputs:
+            environment:
+                description: 'Environment to deploy to'
+                required: true
+                default: 'dev'
+                type: choice
+                options:
+                - dev
+                - stage
+                - prod
+            manifests:
+                description: 'Kubernetes manifests to train (multiline)'
+                required: false
+                default: './k8s/train-pipeline-deployment.yaml'
+                type: string
+            images:
+                description: 'Container images to train (use placeholder {IMAGE_TAG} for dynamic image)'
+                required: false
+                default: '{IMAGE_TAG}'
+                type: string
+            run_training:
+                description: 'Run training step'
+                required: false
+                default: false
+                type: boolean
+            # Optional explicit cluster name; leave blank to auto-detect first DOKS cluster
+            cluster_name:
+                description: 'Explicit DigitalOcean Kubernetes cluster name (optional)'
+                required: false
+                type: string
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    train:
+        if: ${{ always() && !cancelled() && github.event.inputs.run_training == 'true' }}
+        uses: ./.github/workflows/train.yaml
+        with:
+          environment: ${{ github.event.inputs.environment || 'dev' }}
+          tune_hyperparameters: true
+        secrets:
+          DO_SPACES_ACCESS_KEY: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+          DO_SPACES_SECRET_KEY: ${{ secrets.DO_SPACES_SECRET_KEY }}
+          DO_SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+          DO_SPACES_REGION: ${{ secrets.DO_SPACES_REGION }}
+               
