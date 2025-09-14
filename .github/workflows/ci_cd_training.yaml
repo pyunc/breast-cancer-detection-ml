@@ -1,0 +1,184 @@
+name: CI/CD Pipeline Training
+
+on:
+  push:
+        branches: [dev, feat/*, main]
+        paths:
+            - 'src/**'
+            - 'pipelines/**'
+            - 'k8s/**'
+            - '.github/**'
+  pull_request:
+        branches: [dev, main]
+  workflow_call:
+    inputs:
+        environment:
+            description: 'Environment to deploy to'
+            required: true
+            default: 'stage'
+            type: string
+        tune_hyperparameters:
+          description: 'Enable hyperparameter tuning'
+          required: false
+          default: true
+          type: boolean
+        manifests:
+          description: 'Kubernetes training manifest path'
+          required: false
+          default: './k8s/train-job.yaml'
+          type: string
+        image:
+          description: 'Training image (with tag) to use'
+          required: false
+          default: 'pauloyuncha/breast-cancer-detection-ml:latest'
+          type: string
+        cluster_name:
+          description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
+          required: false
+          type: string
+    secrets:
+      DO_API_TOKEN:
+        description: 'DigitalOcean API token (read/write)'
+        required: true
+      DO_SPACES_ACCESS_KEY:
+        description: 'DigitalOcean Spaces access key'
+        required: true
+      DO_SPACES_SECRET_KEY:
+        description: 'DigitalOcean Spaces secret key'
+        required: true
+      DO_SPACES_BUCKET:
+        description: 'DigitalOcean Spaces bucket name'
+        required: true
+      DO_SPACES_REGION:
+        description: 'DigitalOcean Spaces region'
+        required: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Display training parameters
+        run: |
+          echo "Environment: ${{ inputs.environment }}";
+          echo "Manifest: ${{ inputs.manifests }}";
+          echo "Image: ${{ inputs.image }}";
+          echo "Tune: ${{ inputs.tune_hyperparameters }}";
+          echo "Cluster (requested): '${{ inputs.cluster_name }}'";
+
+      - name: Install doctl
+        run: |
+          set -e
+          curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
+          tar -xzf doctl.tgz
+          sudo mv doctl /usr/local/bin/
+          doctl version
+
+      - name: Authenticate doctl
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          doctl auth init -t "$DO_API_TOKEN"
+          doctl account get
+
+      - name: Resolve cluster and fetch kubeconfig
+        id: resolve_cluster
+        run: |
+          set -e
+          if [ -z "${{ inputs.cluster_name }}" ]; then
+            echo "No cluster_name provided. Auto-selecting first available cluster.";
+            CLUSTER_NAME=$(doctl kubernetes cluster list --format Name --no-header | head -n1)
+            if [ -z "$CLUSTER_NAME" ]; then
+              echo "No Kubernetes clusters found for this token." >&2
+              exit 1
+            fi
+          else
+            CLUSTER_NAME='${{ inputs.cluster_name }}'
+          fi
+          echo "Using cluster: $CLUSTER_NAME"
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 900
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Prepare training manifest
+        id: prep
+        run: |
+          set -euo pipefail
+          MANIFEST="${{ inputs.manifests }}"
+          echo "Original manifest (first 60 lines):" && head -n60 "$MANIFEST" || true
+          tmp_file=$(mktemp)
+          cp "$MANIFEST" "$tmp_file"
+          sed -i "s|__IMAGE__|${{ inputs.image }}|g" "$tmp_file"
+          sed -i "s|__TUNE_FLAG__|${{ inputs.tune_hyperparameters }}|g" "$tmp_file"
+          echo "Diff after substitutions:" && diff -u "$MANIFEST" "$tmp_file" || true
+          mv "$tmp_file" "$MANIFEST"
+          echo '--- Final manifest snippet ---'
+          head -n60 "$MANIFEST"
+
+      - name: Apply training Job
+        run: |
+          set -e
+          kubectl apply -f ${{ inputs.manifests }}
+          echo 'Current Jobs:'
+          kubectl get jobs -l app=train -o wide || true
+          echo 'Pods:'
+          kubectl get pods -l app=train -o wide || true
+
+      - name: Wait for Job completion
+        run: |
+          set -e
+          JOB_NAME=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}')
+          echo "Waiting for Job: $JOB_NAME"
+          # Poll status
+          for i in $(seq 1 60); do
+            S=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.succeeded}') || true
+            F=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.failed}') || true
+            echo "Attempt $i: succeeded=$S failed=$F";
+            if [ "$S" = "1" ]; then
+              echo "Job completed successfully"; break; fi
+            if [ "${F:-0}" != "" ] && [ "$F" -gt 0 ]; then
+              echo "Job failed"; kubectl describe job "$JOB_NAME"; kubectl logs -l job-name="$JOB_NAME" --tail=200; exit 1; fi
+            sleep 10;
+          done
+          if [ "${S:-0}" != "1" ]; then
+            echo "Timed out waiting for job"; kubectl describe job "$JOB_NAME"; kubectl logs -l job-name="$JOB_NAME" --tail=200; exit 1; fi
+          echo '--- Job Pod Logs (last 400 lines) ---'
+          kubectl logs -l job-name="$JOB_NAME" --tail=400 || true
+
+      - name: Collect model artifacts (list)
+        run: |
+          set -e
+          POD=$(kubectl get pods -l job-name=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}') -o jsonpath='{.items[0].metadata.name}')
+          echo "Using pod $POD to list model artifacts"
+          kubectl exec "$POD" -- bash -c 'ls -R models || echo "models directory missing"'
+
+      - name: Download artifacts from pod
+        run: |
+          set -e
+          JOB_NAME=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}')
+          POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
+          mkdir -p models
+          kubectl cp "$POD":/app/models ./models || echo "No models copied"
+          find models -maxdepth 2 -type f -ls || true
+
+      - name: Upload trained model to DigitalOcean Spaces
+        if: ${{ hashFiles('models/*') != '' }}
+        uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SPACES_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACES_BUCKET }}
+          space_region: ${{ secrets.DO_SPACES_REGION }}
+          source: models/
+          out_dir: models/${{ github.run_number }}-${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "Training job finished" >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ inputs.image }}" >> $GITHUB_STEP_SUMMARY
+          echo "Tune: ${{ inputs.tune_hyperparameters }}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster: ${{ steps.resolve_cluster.outputs.cluster_name || inputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY

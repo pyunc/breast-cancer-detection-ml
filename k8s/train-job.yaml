@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: breast-cancer-detection-ml-train-pipeline-job
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: train
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: train
+          # __IMAGE__ or pauloyuncha/breast-cancer-detection-ml:latest
+          image: pauloyuncha/breast-cancer-detection-ml:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/ml/
+          command: ["bash","-c"]
+          args:
+            - |
+              echo "[train-job] Starting training (tune=__TUNE_FLAG__)";
+              if [ "__TUNE_FLAG__" = "true" ]; then
+                python tools/run.py --run-train --tune;
+              else
+                python tools/run.py --run-train;
+              fi;
+              echo "[train-job] Training finished. Listing model artifacts:";
+              ls -R models || echo "No models directory found";
+              echo "[train-job] Done.";
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
