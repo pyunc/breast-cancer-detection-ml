@@ -2,7 +2,7 @@ name: CI/CD Pipeline Training
 
 on:
   push:
-        branches: [dev, feat/*, main]
+        branches: [dev, main]
         paths:
             - 'src/**'
             - 'pipelines/**'
@@ -10,7 +10,7 @@ on:
             - '.github/**'
   pull_request:
         branches: [dev, main]
-  workflow_call:
+  workflow_dispatch:
     inputs:
         environment:
             description: 'Environment to deploy to'
