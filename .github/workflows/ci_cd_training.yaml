@@ -36,22 +36,6 @@ on:
           description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
           required: false
           type: string
-    secrets:
-      DO_API_TOKEN:
-        description: 'DigitalOcean API token (read/write)'
-        required: true
-      DO_SPACES_ACCESS_KEY:
-        description: 'DigitalOcean Spaces access key'
-        required: true
-      DO_SPACES_SECRET_KEY:
-        description: 'DigitalOcean Spaces secret key'
-        required: true
-      DO_SPACES_BUCKET:
-        description: 'DigitalOcean Spaces bucket name'
-        required: true
-      DO_SPACES_REGION:
-        description: 'DigitalOcean Spaces region'
-        required: true
 
 jobs:
   train:
