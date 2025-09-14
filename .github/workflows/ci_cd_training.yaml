@@ -160,8 +160,18 @@ jobs:
           set -e
           JOB_NAME="${{ steps.prep.outputs.job_name }}"
           POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
-          echo "Using pod $POD to list model artifacts"
-          kubectl exec "$POD" -- bash -c 'ls -R models || echo "models directory missing"'
+          PHASE=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}')
+          echo "Using pod $POD (phase=$PHASE) to list model artifacts"
+          if [ "$PHASE" = "Running" ]; then
+            kubectl exec "$POD" -- bash -c 'ls -R /opt/ml/models || echo "models directory missing"'
+          else
+            echo "Pod not Running (phase=$PHASE); will attempt direct copy instead of exec"
+            mkdir -p models_tmp
+            # Try both possible base paths
+            kubectl cp "$POD":/opt/ml/models ./models_tmp 2>/dev/null || \
+              kubectl cp "$POD":/app/models ./models_tmp 2>/dev/null || echo "No models copied"
+            find models_tmp -maxdepth 3 -type f -ls || echo "No model files found"
+          fi
 
       - name: Download artifacts from pod
         run: |
@@ -169,8 +179,10 @@ jobs:
           JOB_NAME="${{ steps.prep.outputs.job_name }}"
           POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
           mkdir -p models
-          kubectl cp "$POD":/app/models ./models || echo "No models copied"
-          find models -maxdepth 2 -type f -ls || true
+          # Prefer /opt/ml/models, fallback to /app/models
+          kubectl cp "$POD":/opt/ml/models ./models 2>/dev/null || \
+            kubectl cp "$POD":/app/models ./models 2>/dev/null || echo "No models copied"
+          find models -maxdepth 3 -type f -ls || true
 
       - name: Upload trained model to DigitalOcean Spaces
         if: ${{ hashFiles('models/*') != '' }}
