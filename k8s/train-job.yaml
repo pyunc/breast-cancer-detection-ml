@@ -21,9 +21,9 @@ spec:
             - |
               echo "[train-job] Starting training (tune=__TUNE_FLAG__)";
               if [ "__TUNE_FLAG__" = "true" ]; then
-                python tools/run.py --run-train --tune;
+                uv run python tools/run.py --run-train --tune;
               else
-                python tools/run.py --run-train;
+                uv run python tools/run.py --run-train;
               fi;
               echo "[train-job] Training finished. Listing model artifacts:";
               ls -R models || echo "No models directory found";
