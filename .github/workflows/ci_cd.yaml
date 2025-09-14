@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline Build
 
 on:
     push:
@@ -6,6 +6,8 @@ on:
         paths:
             - 'src/**'
             - 'pipelines/**'
+            - 'k8s/**'
+            - '.github/**'
     pull_request:
         branches: [dev, main]
     workflow_dispatch:
@@ -19,44 +21,16 @@ on:
                 - dev
                 - stage
                 - prod
-            manifests:
-                description: 'Kubernetes manifests to deploy (multiline)'
-                required: false
-                default: './k8s/inference-pipeline-deployment.yaml'
-                type: string
             images:
                 description: 'Container images to deploy (use placeholder {IMAGE_TAG} for dynamic image)'
                 required: false
                 default: '{IMAGE_TAG}'
                 type: string
-            run_training:
-                description: 'Run training step'
-                required: false
-                default: false
-                type: boolean
-            run_deployment:
-                description: 'Run deployment step in K8s'
-                required: false
-                default: false
-                type: boolean
             run_ci:
                 description: 'Run ci step by Docker build and push'
                 required: false
                 default: false
                 type: boolean
-            model_url:
-                description: 'Override model URL (skip training)'
-                required: false
-                type: string
-            preprocessor_url:
-                description: 'Override preprocessor URL (skip training)'
-                required: false
-                type: string
-            # Optional explicit cluster name; leave blank to auto-detect first DOKS cluster
-            cluster_name:
-                description: 'Explicit DigitalOcean Kubernetes cluster name (optional)'
-                required: false
-                type: string
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -152,21 +126,7 @@ jobs:
               run: |
                 echo "📦 Test Results Artifact URL:"
                 echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/test-results"
-
-    train:
-        needs: test
-        if: ${{ always() && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && github.event.inputs.run_training == 'true' }}
-        uses: ./.github/workflows/train.yaml
-        with:
-          environment: ${{ github.event.inputs.environment || 'dev' }}
-          python_version: '3.11'
-          tune_hyperparameters: true
-        secrets:
-          DO_SPACES_ACCESS_KEY: ${{ secrets.DO_SPACES_ACCESS_KEY }}
-          DO_SPACES_SECRET_KEY: ${{ secrets.DO_SPACES_SECRET_KEY }}
-          DO_SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
-          DO_SPACES_REGION: ${{ secrets.DO_SPACES_REGION }}
-                
+    
     ci:
         runs-on: ubuntu-latest
         needs: test
@@ -212,17 +172,4 @@ jobs:
               run: |
                 echo "📦 Deployment Artifacts URL:"
                 echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/deployment-artifacts"
-
-    cd:
-        needs: [ci]
-        if: ${{ always() && !cancelled() && needs.ci.result == 'success' && github.event.inputs.run_deployment == 'true' }}
-        uses: ./.github/workflows/deploy.yaml
-        with:
-          manifests: ${{ github.event.inputs.manifests || './k8s/inference-pipeline-deployment.yaml' }}
-          images: ${{ github.event.inputs.images == '{IMAGE_TAG}' && needs.ci.outputs.image_tag || github.event.inputs.images || needs.ci.outputs.image_tag }}
-          environment: ${{ github.event.inputs.environment || 'dev' }}
-          model_url: ${{ github.event.inputs.model_url }}
-          preprocessor_url: ${{ github.event.inputs.preprocessor_url }}
-          # cluster_name intentionally omitted to allow auto-resolution in deploy workflow when blank
-          cluster_name: ${{ github.event.inputs.cluster_name }}
-        secrets: inherit
+                echo "Finished CI step."
