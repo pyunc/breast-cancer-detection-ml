@@ -77,6 +77,10 @@ spec:
                 configMapKeyRef:
                   name: aula-k8s-config
                   key: APP_SERVER_CONFIG
+            - name: MODEL_URL
+              value: "__MODEL_URL__"
+            - name: PREPROCESSOR_URL
+              value: "__PREPROCESSOR_URL__"
       #   - name: nginx
       #     image: nginx:latest
       #     ports:

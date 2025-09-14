@@ -14,7 +14,7 @@ on:
       environment:
         description: 'Environment to deploy to'
         required: false
-        default: 'dev'
+        default: 'stage'
         type: string
       model_url:
         description: 'Remote model URL'
