@@ -11,31 +11,31 @@ on:
   pull_request:
         branches: [dev, main]
   workflow_dispatch:
-    inputs:
-        environment:
-            description: 'Environment to deploy to'
-            required: true
-            default: 'stage'
+      inputs:
+          environment:
+              description: 'Environment to deploy to'
+              required: true
+              default: 'stage'
+              type: string
+          tune_hyperparameters:
+            description: 'Enable hyperparameter tuning'
+            required: false
+            default: true
+            type: boolean
+          manifests:
+            description: 'Kubernetes training manifest path'
+            required: false
+            default: './k8s/train-job.yaml'
             type: string
-        tune_hyperparameters:
-          description: 'Enable hyperparameter tuning'
-          required: false
-          default: true
-          type: boolean
-        manifests:
-          description: 'Kubernetes training manifest path'
-          required: false
-          default: './k8s/train-job.yaml'
-          type: string
-        image:
-          description: 'Training image (with tag) to use'
-          required: false
-          default: 'pauloyuncha/breast-cancer-detection-ml:latest'
-          type: string
-        cluster_name:
-          description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
-          required: false
-          type: string
+          image:
+            description: 'Training image (with tag) to use'
+            required: false
+            default: 'pauloyuncha/breast-cancer-detection-ml:latest'
+            type: string
+          cluster_name:
+            description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
+            required: false
+            type: string
 
 jobs:
   train:
