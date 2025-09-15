@@ -28,10 +28,10 @@ on:
         description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
         required: false
         type: string
-    secrets:
-      DO_API_TOKEN:
-        description: 'DigitalOcean API token (read/write)'
-        required: true
+    # secrets:
+    #   DO_API_TOKEN:
+    #     description: 'DigitalOcean API token (read/write)'
+    #     required: true
 
 jobs:
   deploy:
@@ -40,7 +40,7 @@ jobs:
     env:
       # Expose the token in both conventional variable names; doctl will auto-use DIGITALOCEAN_ACCESS_TOKEN
       DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
-      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      # DO_API_TOKEN: {{ secrets.DO_API_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.5
@@ -54,7 +54,7 @@ jobs:
           echo "Requested Cluster (may be blank for auto): ${{ inputs.cluster_name }}"
           echo "Model URL: ${{ inputs.model_url }}"
           echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
-          if [ -n "${DO_API_TOKEN}" ]; then echo "DigitalOcean token detected (masked)"; else echo "DigitalOcean token MISSING"; fi
+          if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then echo "DigitalOcean token detected (masked)"; else echo "DigitalOcean token MISSING"; fi
           echo "=== End Deployment Information ==="
       
       - name: Prepare manifests (inject model URLs)
@@ -88,7 +88,7 @@ jobs:
         run: |
           set -e
           if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
-            echo "ERROR: DIGITALOCEAN_ACCESS_TOKEN (secret DO_API_TOKEN) is missing or empty." >&2
+            echo "ERROR: DIGITALOCEAN_ACCESS_TOKEN (secret DIGITALOCEAN_ACCESS_TOKEN) is missing or empty." >&2
             exit 1
           fi
           # Non-interactive auth (doctl reads env var automatically)
