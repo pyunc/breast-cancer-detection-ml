@@ -74,6 +74,7 @@ jobs:
             mv $tmp_file ${{ inputs.manifests }}
           grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
           grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
+          echo "=== End Injected Information ==="
       
       - name: Install doctl
         run: |
