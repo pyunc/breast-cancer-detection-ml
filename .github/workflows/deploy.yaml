@@ -39,7 +39,7 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       # Expose the token in both conventional variable names; doctl will auto-use DIGITALOCEAN_ACCESS_TOKEN
-      # DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
       DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
     steps:
       - name: Checkout code
@@ -87,8 +87,8 @@ jobs:
       - name: Verify DigitalOcean auth
         run: |
           set -e
-          if [ -z "${DO_API_TOKEN}" ]; then
-            echo "ERROR: DO_API_TOKEN (secret DO_API_TOKEN) is missing or empty." >&2
+          if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
+            echo "ERROR: DIGITALOCEAN_ACCESS_TOKEN (secret DO_API_TOKEN) is missing or empty." >&2
             exit 1
           fi
           # Non-interactive auth (doctl reads env var automatically)
