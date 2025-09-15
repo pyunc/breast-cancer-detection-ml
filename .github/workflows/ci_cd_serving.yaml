@@ -72,7 +72,7 @@ jobs:
         run: python3 .github/scripts/discover_latest_model.py
   cd:
     needs: discover_model
-    if: ${{ always() && !cancelled() && github.event.inputs.run_deployment == 'true' }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_deployment != 'false') }}
     uses: ./.github/workflows/deploy.yaml
     with:
       manifests: ${{ github.event.inputs.manifests || './k8s/inference-pipeline-deployment.yaml' }}
