@@ -77,7 +77,7 @@ jobs:
     with:
       manifests: ${{ github.event.inputs.manifests || './k8s/inference-pipeline-deployment.yaml' }}
       images: ${{ github.event.inputs.images }}
-      environment: ${{ github.event.inputs.environment || 'dev' }}
+      environment: ${{ github.event.inputs.environment}}
       model_url: ${{ github.event.inputs.model_url || needs.discover_model.outputs.model_url }}
       preprocessor_url: ${{ github.event.inputs.preprocessor_url || needs.discover_model.outputs.preprocessor_url }}
       cluster_name: ${{ github.event.inputs.cluster_name }}
