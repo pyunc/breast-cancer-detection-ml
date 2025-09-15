@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: __JOB_NAME__
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: train
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: train
+          # Image will be injected by CI via sed replacing __IMAGE__
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/ml/
+          command: ["bash","-c"]
+          args:
+            - |
+              echo "[train-job] Starting training (tune=__TUNE_FLAG__)";
+              if [ "__TUNE_FLAG__" = "true" ]; then
+                uv run python tools/run.py --run-train --tune;
+              else
+                uv run python tools/run.py --run-train;
+              fi;
+              echo "[train-job] Training finished. Listing model artifacts:";
+              ls -R models || echo "No models directory found";
+              echo "[train-job] Done.";
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"

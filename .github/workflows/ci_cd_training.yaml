@@ -1,0 +1,204 @@
+name: CI/CD Pipeline Training
+
+on:
+  push:
+        branches: [dev, main]
+        paths:
+            - 'src/**'
+            - 'pipelines/**'
+            - 'k8s/**'
+            - '.github/**'
+  pull_request:
+        branches: [dev, main]
+  workflow_dispatch:
+      inputs:
+          environment:
+              description: 'Environment to deploy to'
+              required: true
+              default: 'stage'
+              type: string
+          tune_hyperparameters:
+            description: 'Enable hyperparameter tuning'
+            required: false
+            default: true
+            type: boolean
+          manifests:
+            description: 'Kubernetes training manifest path'
+            required: false
+            default: './k8s/train-job.yaml'
+            type: string
+          image:
+            description: 'Training image (with tag) to use'
+            required: false
+            default: 'pauloyuncha/breast-cancer-detection-ml:latest'
+            type: string
+          cluster_name:
+            description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
+            required: false
+            type: string
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    # Use fallback when not workflow_dispatch (push/PR events have no inputs.*)
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
+    env:
+      # Provide token non-interactively for doctl
+      DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      # Fallback vars (use inputs only if workflow_dispatch)
+      ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
+      MANIFEST: ${{ github.event_name == 'workflow_dispatch' && inputs.manifests || './k8s/train-job.yaml' }}
+      IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'pauloyuncha/breast-cancer-detection-ml:latest' }}
+      TUNE: ${{ github.event_name == 'workflow_dispatch' && inputs.tune_hyperparameters ||  'true' }}
+      CLUSTER_NAME_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.cluster_name || '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Display training parameters
+        run: |
+          echo "Event: $GITHUB_EVENT_NAME";
+          echo "Environment: $ENVIRONMENT";
+          echo "Manifest: $MANIFEST";
+            echo "Image: $IMAGE";
+          echo "Tune: $TUNE";
+          echo "Cluster (requested): '$CLUSTER_NAME_INPUT'";
+
+      - name: Install doctl
+        run: |
+          set -e
+          curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
+          tar -xzf doctl.tgz
+          sudo mv doctl /usr/local/bin/
+          doctl version
+
+      - name: Verify DigitalOcean auth (env token)
+        run: |
+          set -e
+          if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
+            echo "DIGITALOCEAN_ACCESS_TOKEN is empty; ensure secret DO_API_TOKEN is configured" >&2
+            exit 1
+          fi
+          # doctl auto-auths using DIGITALOCEAN_ACCESS_TOKEN (no interactive prompt)
+          doctl account get
+
+      - name: Resolve cluster and fetch kubeconfig
+        id: resolve_cluster
+        run: |
+          set -e
+          if [ -z "${CLUSTER_NAME_INPUT}" ]; then
+            echo "No cluster_name provided via inputs; auto-selecting first available cluster.";
+            CLUSTER_NAME=$(doctl kubernetes cluster list --format Name --no-header | head -n1)
+            if [ -z "$CLUSTER_NAME" ]; then
+              echo "No Kubernetes clusters found for this token." >&2
+              exit 1
+            fi
+          else
+            CLUSTER_NAME="$CLUSTER_NAME_INPUT"
+          fi
+          echo "Using cluster: $CLUSTER_NAME"
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 900
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Prepare training manifest
+        id: prep
+        run: |
+          set -euo pipefail
+          echo "Original manifest (first 60 lines):" && head -n60 "$MANIFEST" || true
+          tmp_file=$(mktemp)
+          cp "$MANIFEST" "$tmp_file"
+          # Dynamic job name to avoid immutable field conflicts
+          JOB_NAME="breast-cancer-detection-ml-train-pipeline-job-${GITHUB_SHA::7}"
+          sed -i "s|__JOB_NAME__|$JOB_NAME|g" "$tmp_file"
+          sed -i "s|__IMAGE__|$IMAGE|g" "$tmp_file"
+          sed -i "s|__TUNE_FLAG__|$TUNE|g" "$tmp_file"
+          echo "Using job name: $JOB_NAME"
+          echo "job_name=$JOB_NAME" >> $GITHUB_OUTPUT
+          echo "Diff after substitutions:" && diff -u "$MANIFEST" "$tmp_file" || true
+          mv "$tmp_file" "$MANIFEST"
+          echo '--- Final manifest snippet ---'
+          head -n60 "$MANIFEST"
+
+      - name: Apply training Job
+        run: |
+          set -e
+          echo "Applying manifest with job name from previous step"
+          kubectl apply -f "$MANIFEST"
+          echo 'Current Jobs:'
+          kubectl get jobs -l app=train -o wide || true
+          echo 'Pods:'
+          kubectl get pods -l app=train -o wide || true
+
+      - name: Wait for Job completion
+        run: |
+          set -e
+          JOB_NAME="${{ steps.prep.outputs.job_name }}"
+          if [ -z "$JOB_NAME" ]; then
+            echo "Falling back to list (output missing)";
+            JOB_NAME=$(kubectl get job -l app=train -o jsonpath='{.items[0].metadata.name}')
+          fi
+          echo "Waiting for Job: $JOB_NAME"
+          for i in $(seq 1 60); do
+            S=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.succeeded}') || true
+            F=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.failed}') || true
+            echo "Attempt $i: succeeded=$S failed=$F";
+            if [ "$S" = "1" ]; then
+              echo "Job completed successfully"; break; fi
+            if [ "${F:-0}" != "" ] && [ "$F" -gt 0 ]; then
+              echo "Job failed"; kubectl describe job "$JOB_NAME"; kubectl logs -l job-name="$JOB_NAME" --tail=200; exit 1; fi
+            sleep 10;
+          done
+          if [ "${S:-0}" != "1" ]; then
+            echo "Timed out waiting for job"; kubectl describe job "$JOB_NAME"; kubectl logs -l job-name="$JOB_NAME" --tail=200; exit 1; fi
+          echo '--- Job Pod Logs (last 400 lines) ---'
+          kubectl logs -l job-name="$JOB_NAME" --tail=400 || true
+
+      - name: Collect model artifacts (list)
+        run: |
+          set -e
+          JOB_NAME="${{ steps.prep.outputs.job_name }}"
+          POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
+          PHASE=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}')
+          echo "Using pod $POD (phase=$PHASE) to list model artifacts"
+          if [ "$PHASE" = "Running" ]; then
+            kubectl exec "$POD" -- bash -c 'ls -R /opt/ml/models || echo "models directory missing"'
+          else
+            echo "Pod not Running (phase=$PHASE); will attempt direct copy instead of exec"
+            mkdir -p models_tmp
+            # Try both possible base paths
+            kubectl cp "$POD":/opt/ml/models ./models_tmp 2>/dev/null || \
+              kubectl cp "$POD":/app/models ./models_tmp 2>/dev/null || echo "No models copied"
+            find models_tmp -maxdepth 3 -type f -ls || echo "No model files found"
+          fi
+
+      - name: Download artifacts from pod
+        run: |
+          set -e
+          JOB_NAME="${{ steps.prep.outputs.job_name }}"
+          POD=$(kubectl get pods -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
+          mkdir -p models
+          # Prefer /opt/ml/models, fallback to /app/models
+          kubectl cp "$POD":/opt/ml/models ./models 2>/dev/null || \
+            kubectl cp "$POD":/app/models ./models 2>/dev/null || echo "No models copied"
+          find models -maxdepth 3 -type f -ls || true
+
+      - name: Upload trained model to DigitalOcean Spaces
+        if: ${{ hashFiles('models/*') != '' }}
+        uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SPACES_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACES_BUCKET }}
+          space_region: ${{ secrets.DO_SPACES_REGION }}
+          source: models/
+          out_dir: models/${{ github.run_number }}-${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "Training job finished" >> $GITHUB_STEP_SUMMARY
+          echo "Image: $IMAGE" >> $GITHUB_STEP_SUMMARY
+          echo "Tune: $TUNE" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster: ${{ steps.resolve_cluster.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "Job: ${{ steps.prep.outputs.job_name }}" >> $GITHUB_STEP_SUMMARY

@@ -14,7 +14,7 @@ on:
       environment:
         description: 'Environment to deploy to'
         required: false
-        default: 'dev'
+        default: 'stage'
         type: string
       model_url:
         description: 'Remote model URL'
@@ -28,15 +28,18 @@ on:
         description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
         required: false
         type: string
-    secrets:
-      DO_API_TOKEN:
-        description: 'DigitalOcean API token (read/write)'
-        required: true
+    # secrets:
+    #   DO_API_TOKEN:
+    #     description: 'DigitalOcean API token (read/write)'
+    #     required: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    env:
+      DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.5
@@ -50,6 +53,7 @@ jobs:
           echo "Requested Cluster (may be blank for auto): ${{ inputs.cluster_name }}"
           echo "Model URL: ${{ inputs.model_url }}"
           echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
+          if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then echo "DigitalOcean token detected (masked)"; else echo "DigitalOcean token MISSING"; fi
           echo "=== End Deployment Information ==="
       
       - name: Prepare manifests (inject model URLs)
@@ -66,9 +70,10 @@ jobs:
             sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" $tmp_file
           fi
           echo "Processed manifest diff:" && diff -u ${{ inputs.manifests }} $tmp_file || true
-          mv $tmp_file ${{ inputs.manifests }}
+            mv $tmp_file ${{ inputs.manifests }}
           grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
           grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
+          echo "=== End Injected Information ==="
       
       - name: Install doctl
         run: |
@@ -78,11 +83,14 @@ jobs:
           sudo mv doctl /usr/local/bin/
           doctl version
       
-      - name: Authenticate doctl
-        env:
-          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      - name: Verify DigitalOcean auth
         run: |
-          doctl auth init -t "$DO_API_TOKEN"
+          set -e
+          if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
+            echo "ERROR: DIGITALOCEAN_ACCESS_TOKEN (secret DO_API_TOKEN) is missing or empty." >&2
+            exit 1
+          fi
+          # Non-interactive auth (doctl reads env var automatically)
           doctl account get
       
       - name: Resolve cluster and fetch kubeconfig
