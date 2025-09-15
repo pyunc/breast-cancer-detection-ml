@@ -42,8 +42,8 @@ on:
       run_deployment:
         description: 'Set to true to run deployment'
         required: false
-        default: 'true'
-        type: string
+        default: true
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -71,7 +71,7 @@ jobs:
           DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
         run: python3 .github/scripts/discover_latest_model.py
   cd:
-    needs: [discover_model]
+    needs: discover_model
     if: ${{ always() && !cancelled() && github.event.inputs.run_deployment == 'true' }}
     uses: ./.github/workflows/deploy.yaml
     with:
