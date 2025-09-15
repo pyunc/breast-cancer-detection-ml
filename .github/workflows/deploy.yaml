@@ -28,10 +28,10 @@ on:
         description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
         required: false
         type: string
-    secrets:
-      DO_API_TOKEN:
-        description: 'DigitalOcean API token (read/write)'
-        required: true
+    # secrets:
+    #   DO_API_TOKEN:
+    #     description: 'DigitalOcean API token (read/write)'
+    #     required: true
 
 jobs:
   deploy:
