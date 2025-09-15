@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: train
-          image: pauloyuncha/breast-cancer-detection-ml:v1
+          image: pauloyuncha/breast-cancer-detection-ml:latest
           ports:
             - containerPort: 80
               name: https
