@@ -81,6 +81,5 @@ jobs:
       model_url: ${{ github.event.inputs.model_url || needs.discover_model.outputs.model_url }}
       preprocessor_url: ${{ github.event.inputs.preprocessor_url || needs.discover_model.outputs.preprocessor_url }}
       cluster_name: ${{ github.event.inputs.cluster_name }}
-    secrets:
-      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+    secrets: inherit
 
