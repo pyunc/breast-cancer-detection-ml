@@ -76,10 +76,14 @@ jobs:
     uses: ./.github/workflows/deploy.yaml
     with:
       manifests: ${{ github.event.inputs.manifests || './k8s/inference-pipeline-deployment.yaml' }}
-      images: ${{ github.event.inputs.images }}
-      environment: ${{ github.event.inputs.environment}}
+      images: ${{ github.event.inputs.images || 'pauloyuncha/breast-cancer-detection-ml:latest' }}
+      environment: ${{ github.event.inputs.environment || 'stage' }}
       model_url: ${{ github.event.inputs.model_url || needs.discover_model.outputs.model_url }}
       preprocessor_url: ${{ github.event.inputs.preprocessor_url || needs.discover_model.outputs.preprocessor_url }}
       cluster_name: ${{ github.event.inputs.cluster_name }}
     secrets: inherit
+
+    # TODO
+    # instead hardcoded 'stage', 'pauloyuncha/breast-cancer-detection-ml:latest'
+    # make those inputs dynamic
 
