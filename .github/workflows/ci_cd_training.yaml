@@ -2,7 +2,7 @@ name: CI/CD Pipeline Training
 
 on:
   push:
-        branches: [dev, main, 'feat/*']
+        branches: [dev, main]
         paths:
             - 'src/**'
             - 'pipelines/**'
@@ -49,7 +49,7 @@ jobs:
       ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
       MANIFEST: ${{ github.event_name == 'workflow_dispatch' && inputs.manifests || './k8s/train-job.yaml' }}
       IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'pauloyuncha/breast-cancer-detection-ml:latest' }}
-      TUNE: ${{ github.event_name == 'workflow_dispatch' && inputs.tune_hyperparameters || 'true' }}
+      TUNE: ${{ github.event_name == 'workflow_dispatch' && inputs.tune_hyperparameters ||  'true' }}
       CLUSTER_NAME_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.cluster_name || '' }}
     steps:
       - name: Checkout code
@@ -110,7 +110,7 @@ jobs:
           tmp_file=$(mktemp)
           cp "$MANIFEST" "$tmp_file"
           # Dynamic job name to avoid immutable field conflicts
-          JOB_NAME="breast-cancer-train-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          JOB_NAME="breast-cancer-detection-ml-train-pipeline-job-${GITHUB_SHA::7}"
           sed -i "s|__JOB_NAME__|$JOB_NAME|g" "$tmp_file"
           sed -i "s|__IMAGE__|$IMAGE|g" "$tmp_file"
           sed -i "s|__TUNE_FLAG__|$TUNE|g" "$tmp_file"
