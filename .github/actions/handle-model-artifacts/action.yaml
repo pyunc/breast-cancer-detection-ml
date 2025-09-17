@@ -1,0 +1,46 @@
+name: 'Handle Model Artifacts'
+description: 'Collects and uploads model artifacts from a Kubernetes pod to DigitalOcean Spaces.'
+inputs:
+  job_name:
+    description: 'The name of the completed Kubernetes Job.'
+    required: true
+  do_spaces_access_key:
+    description: 'DigitalOcean Spaces access key.'
+    required: true
+  do_spaces_secret_key:
+    description: 'DigitalOcean Spaces secret key.'
+    required: true
+  do_spaces_bucket:
+    description: 'DigitalOcean Spaces bucket name.'
+    required: true
+  do_spaces_region:
+    description: 'DigitalOcean Spaces region.'
+    required: true
+  github_run_number:
+    description: 'GitHub run number.'
+    required: true
+  github_sha:
+    description: 'GitHub SHA.'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Download artifacts from pod
+      shell: bash
+      run: |
+        set -e
+        POD=$(kubectl get pods -l job-name=${{ inputs.job_name }} -o jsonpath='{.items[0].metadata.name}')
+        mkdir -p models
+        kubectl cp "$POD":/opt/ml/models ./models 2>/dev/null || \
+          kubectl cp "$POD":/app/models ./models 2>/dev/null || echo "No models copied"
+        find models -maxdepth 3 -type f -ls || true
+    - name: Upload trained model to DigitalOcean Spaces
+      if: ${{ hashFiles('models/*') != '' }}
+      uses: BetaHuhn/do-spaces-action@v2
+      with:
+        access_key: ${{ inputs.do_spaces_access_key }}
+        secret_key: ${{ inputs.do_spaces_secret_key }}
+        space_name: ${{ inputs.do_spaces_bucket }}
+        space_region: ${{ inputs.do_spaces_region }}
+        source: models/
+        out_dir: models/${{ inputs.github_run_number }}-${{ inputs.github_sha }}

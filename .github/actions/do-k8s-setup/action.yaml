@@ -1,0 +1,57 @@
+name: 'Setup DigitalOcean and Kubernetes'
+description: 'Installs doctl, authenticates with DigitalOcean, and connects to a Kubernetes cluster.'
+inputs:
+  do_token:
+    description: 'DigitalOcean API token.'
+    required: true
+  cluster_name:
+    description: 'DigitalOcean Kubernetes cluster name or ID.'
+    required: false
+outputs:
+  cluster_name:
+    description: "The resolved cluster name."
+    value: ${{ steps.resolve_cluster.outputs.cluster_name }}
+runs:
+  using: "composite"
+  steps:
+    - name: Install doctl
+      shell: bash
+      run: |
+        set -e
+        curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
+        tar -xzf doctl.tgz
+        sudo mv doctl /usr/local/bin/
+        doctl version
+    - name: Verify DigitalOcean auth
+      shell: bash
+      env:
+        DIGITALOCEAN_ACCESS_TOKEN: ${{ inputs.do_token }}
+      run: |
+        set -e
+        if [ -z "${{ inputs.do_token }}" ]; then
+          echo "do_token is empty; ensure the secret is configured" >&2
+          exit 1
+        fi
+        doctl account get
+    - name: Resolve cluster and fetch kubeconfig
+      id: resolve_cluster
+      shell: bash
+      env:
+        DIGITALOCEAN_ACCESS_TOKEN: ${{ inputs.do_token }}
+      run: |
+        set -e
+        if [ -z "${{ inputs.cluster_name }}" ]; then
+          echo "No cluster_name provided; auto-selecting first available cluster.";
+          CLUSTER_NAME=$(doctl kubernetes cluster list --format Name --no-header | head -n1)
+          if [ -z "$CLUSTER_NAME" ]; then
+            echo "No Kubernetes clusters found for this token." >&2
+            exit 1
+          fi
+        else
+          CLUSTER_NAME="${{ inputs.cluster_name }}"
+        fi
+        echo "Using cluster: $CLUSTER_NAME"
+        echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+        doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 900
+        kubectl config current-context
+        kubectl get nodes

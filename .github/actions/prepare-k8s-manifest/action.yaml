@@ -1,0 +1,44 @@
+name: 'Prepare Kubernetes Manifest'
+description: 'Substitutes variables in a Kubernetes manifest file.'
+inputs:
+  manifest_path:
+    description: 'Path to the Kubernetes manifest file.'
+    required: true
+  image:
+    description: 'Docker image to use.'
+    required: true
+  tune_flag:
+    description: 'Flag to enable/disable hyperparameter tuning.'
+    required: false
+    default: 'true'
+  job_name_prefix:
+    description: 'Prefix for the Kubernetes Job name.'
+    required: false
+    default: 'brest-cancer-detection-ml-train-pipeline-job'
+outputs:
+  job_name:
+    description: "The generated job name."
+    value: ${{ steps.prep.outputs.job_name }}
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare training manifest
+      id: prep
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Original manifest (first 60 lines):" && head -n60 "${{ inputs.manifest_path }}" || true
+        tmp_file=$(mktemp)
+        cp "${{ inputs.manifest_path }}" "$tmp_file"
+        # Dynamic job name to avoid immutable field conflicts
+        JOB_NAME="${{ inputs.job_name_prefix }}-${GITHUB_SHA::7}"
+        sed -i "s|__JOB_NAME__|$JOB_NAME|g" "$tmp_file"
+        sed -i "s|__IMAGE__|${{ inputs.image }}|g" "$tmp_file"
+        sed -i "s|__TUNE_FLAG__|${{ inputs.tune_flag }}|g" "$tmp_file"
+        echo "Using job name: $JOB_NAME"
+        echo "job_name=$JOB_NAME" >> $GITHUB_OUTPUT
+        echo "Diff after substitutions:" && diff -u "${{ inputs.manifest_path }}" "$tmp_file" || true
+        # Overwrite the original manifest file with the temp file
+        mv "$tmp_file" "${{ inputs.manifest_path }}"
+        echo '--- Final manifest snippet ---'
+        head -n60 "${{ inputs.manifest_path }}"

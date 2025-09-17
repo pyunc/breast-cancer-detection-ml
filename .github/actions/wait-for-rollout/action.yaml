@@ -1,0 +1,20 @@
+name: 'Wait for Rollout'
+description: 'Waits for a Kubernetes deployment rollout to complete.'
+inputs:
+  deployment_name:
+    description: 'The name of the deployment to wait for.'
+    required: true
+  timeout:
+    description: 'Timeout for the rollout status command.'
+    required: false
+    default: '300s'
+runs:
+  using: "composite"
+  steps:
+    - name: Wait for rollout
+      shell: bash
+      run: |
+        set -e
+        kubectl rollout status deployment/${{ inputs.deployment_name }} --timeout=${{ inputs.timeout }}
+        echo '--- Pods (post-rollout) ---'
+        kubectl get pods -l app=inference -o wide

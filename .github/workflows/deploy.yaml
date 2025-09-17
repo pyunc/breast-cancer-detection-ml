@@ -56,63 +56,19 @@ jobs:
           if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then echo "DigitalOcean token detected (masked)"; else echo "DigitalOcean token MISSING"; fi
           echo "=== End Deployment Information ==="
       
-      - name: Prepare manifests (inject model URLs)
-        if: ${{ inputs.model_url != '' || inputs.preprocessor_url != '' }}
-        run: |
-          set -euo pipefail
-          echo "Original manifest snippet:" && head -n 60 ${{ inputs.manifests }} || true
-          tmp_file=$(mktemp)
-          cp ${{ inputs.manifests }} $tmp_file
-          if [ "${{ inputs.model_url }}" != "" ]; then
-            sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" $tmp_file
-          fi
-          if [ "${{ inputs.preprocessor_url }}" != "" ]; then
-            sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" $tmp_file
-          fi
-          echo "Processed manifest diff:" && diff -u ${{ inputs.manifests }} $tmp_file || true
-            mv $tmp_file ${{ inputs.manifests }}
-          grep -n '__MODEL_URL__' ${{ inputs.manifests }} && echo 'WARNING: MODEL placeholder still present' || true
-          grep -n '__PREPROCESSOR_URL__' ${{ inputs.manifests }} && echo 'WARNING: PREPROCESSOR placeholder still present' || true
-          echo "=== End Injected Information ==="
-      
-      - name: Install doctl
-        run: |
-          set -e
-          curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(curl -s https://api.github.com/repos/digitalocean/doctl/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')-linux-amd64.tar.gz -o doctl.tgz
-          tar -xzf doctl.tgz
-          sudo mv doctl /usr/local/bin/
-          doctl version
-      
-      - name: Verify DigitalOcean auth
-        run: |
-          set -e
-          if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
-            echo "ERROR: DIGITALOCEAN_ACCESS_TOKEN (secret DO_API_TOKEN) is missing or empty." >&2
-            exit 1
-          fi
-          # Non-interactive auth (doctl reads env var automatically)
-          doctl account get
-      
-      - name: Resolve cluster and fetch kubeconfig
-        id: resolve_cluster
-        run: |
-          set -e
-          if [ -z "${{ inputs.cluster_name }}" ]; then
-            echo "No cluster_name provided. Auto-selecting first available cluster.";
-            CLUSTER_NAME=$(doctl kubernetes cluster list --format Name --no-header | head -n1)
-            if [ -z "$CLUSTER_NAME" ]; then
-              echo "No Kubernetes clusters found for this token." >&2
-              exit 1
-            fi
-          else
-            CLUSTER_NAME='${{ inputs.cluster_name }}'
-          fi
-          echo "Using cluster: $CLUSTER_NAME"
-          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
-          # Short expiry for security; adjust if needed
-          doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME" --expiry-seconds 600
-          kubectl config current-context
-          kubectl get nodes
+      - name: Prepare manifests
+        uses: ./.github/actions/prepare-deployment-manifest
+        with:
+          manifest_path: ${{ inputs.manifests }}
+          model_url: ${{ inputs.model_url }}
+          preprocessor_url: ${{ inputs.preprocessor_url }}
+
+      - name: Setup DigitalOcean and Kubernetes
+        id: do_k8s_setup
+        uses: ./.github/actions/do-k8s-setup
+        with:
+          do_token: ${{ secrets.DO_API_TOKEN }}
+          cluster_name: ${{ inputs.cluster_name }}
       
       - name: Apply manifests
         run: |
@@ -124,11 +80,9 @@ jobs:
           kubectl get pods -l app=inference -o wide || true
       
       - name: Wait for rollout
-        run: |
-          set -e
-          kubectl rollout status deployment/breast-cancer-detection-ml-inference-pipeline-deployment --timeout=300s
-          echo '--- Pods (post-rollout) ---'
-          kubectl get pods -l app=inference -o wide
+        uses: ./.github/actions/wait-for-rollout
+        with:
+          deployment_name: breast-cancer-detection-ml-inference-pipeline-deployment
       
       - name: Show services
         run: |
@@ -136,7 +90,7 @@ jobs:
       
       - name: Summary
         run: |
-          RESOLVED_CLUSTER=${{ steps.resolve_cluster.outputs.cluster_name || inputs.cluster_name }}
+          RESOLVED_CLUSTER=${{ steps.do_k8s_setup.outputs.cluster_name || inputs.cluster_name }}
           echo "Deployment complete" >> $GITHUB_STEP_SUMMARY
           echo "Image(s): ${{ inputs.images }}" >> $GITHUB_STEP_SUMMARY
           echo "Cluster: ${RESOLVED_CLUSTER}" >> $GITHUB_STEP_SUMMARY

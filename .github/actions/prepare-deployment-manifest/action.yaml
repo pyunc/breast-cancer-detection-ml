@@ -1,0 +1,36 @@
+name: 'Prepare Deployment Manifest'
+description: 'Substitutes model and preprocessor URLs in a Kubernetes manifest file.'
+inputs:
+  manifest_path:
+    description: 'Path to the Kubernetes manifest file.'
+    required: true
+  model_url:
+    description: 'Remote model URL.'
+    required: false
+  preprocessor_url:
+    description: 'Remote preprocessor URL.'
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare manifests (inject model URLs)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.model_url }}" ] && [ -z "${{ inputs.preprocessor_url }}" ]; then
+          echo "No model or preprocessor URL provided, skipping manifest preparation."
+          exit 0
+        fi
+        echo "Original manifest snippet:" && head -n 60 "${{ inputs.manifest_path }}" || true
+        tmp_file=$(mktemp)
+        cp "${{ inputs.manifest_path }}" "$tmp_file"
+        if [ -n "${{ inputs.model_url }}" ]; then
+          sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" "$tmp_file"
+        fi
+        if [ -n "${{ inputs.preprocessor_url }}" ]; then
+          sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" "$tmp_file"
+        fi
+        echo "Processed manifest diff:" && diff -u "${{ inputs.manifest_path }}" "$tmp_file" || true
+        mv "$tmp_file" "${{ inputs.manifest_path }}"
+        grep -n '__MODEL_URL__' "${{ inputs.manifest_path }}" && echo 'WARNING: MODEL placeholder still present' || true
+        grep -n '__PREPROCESSOR_URL__' "${{ inputs.manifest_path }}" && echo 'WARNING: PREPROCESSOR placeholder still present' || true
