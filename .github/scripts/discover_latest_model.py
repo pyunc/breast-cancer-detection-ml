@@ -10,6 +10,9 @@ PREFIX = 'models/'
 def main():
     ak = os.environ.get('DO_SPACES_ACCESS_KEY')
     sk = os.environ.get('DO_SPACES_SECRET_KEY')
+    Bucket = os.environ.get('DO_SPACES_BUCKET')
+
+
     if not ak or not sk:
         print('Missing DO_SPACES_ACCESS_KEY/DO_SPACES_SECRET_KEY secrets', file=sys.stderr)
         return 1
@@ -17,7 +20,7 @@ def main():
     newest = None
     cont = None
     while True:
-        kwargs = dict(Bucket=BUCKET, Prefix=PREFIX, MaxKeys=1000)
+        kwargs = dict(Bucket=Bucket, Prefix=PREFIX, MaxKeys=1000)
         if cont:
             kwargs['ContinuationToken'] = cont
         resp = s3.list_objects_v2(**kwargs)

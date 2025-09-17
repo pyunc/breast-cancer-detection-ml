@@ -10,27 +10,43 @@ inputs:
   preprocessor_url:
     description: 'Remote preprocessor URL.'
     required: false
+outputs:
+  manifest_path:
+    description: 'Path to the processed Kubernetes manifest file.'
+    value: ${{ steps.prepare.outputs.manifest_path }}
 runs:
   using: "composite"
   steps:
     - name: Prepare manifests (inject model URLs)
+      id: prepare
       shell: bash
       run: |
         set -euo pipefail
         if [ -z "${{ inputs.model_url }}" ] && [ -z "${{ inputs.preprocessor_url }}" ]; then
           echo "No model or preprocessor URL provided, skipping manifest preparation."
+          echo "manifest_path=${{ inputs.manifest_path }}" >> $GITHUB_OUTPUT
           exit 0
         fi
         echo "Original manifest snippet:" && head -n 60 "${{ inputs.manifest_path }}" || true
-        tmp_file=$(mktemp)
-        cp "${{ inputs.manifest_path }}" "$tmp_file"
+        
+        processed_manifest_path="${{ runner.temp }}/processed-manifest.yaml"
+        
+        cp "${{ inputs.manifest_path }}" "$processed_manifest_path"
         if [ -n "${{ inputs.model_url }}" ]; then
-          sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" "$tmp_file"
+          sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" "$processed_manifest_path"
         fi
         if [ -n "${{ inputs.preprocessor_url }}" ]; then
-          sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" "$tmp_file"
+          sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" "$processed_manifest_path"
         fi
-        echo "Processed manifest diff:" && diff -u "${{ inputs.manifest_path }}" "$tmp_file" || true
-        mv "$tmp_file" "${{ inputs.manifest_path }}"
-        grep -n '__MODEL_URL__' "${{ inputs.manifest_path }}" && echo 'WARNING: MODEL placeholder still present' || true
-        grep -n '__PREPROCESSOR_URL__' "${{ inputs.manifest_path }}" && echo 'WARNING: PREPROCESSOR placeholder still present' || true
+        
+        echo "Processed manifest diff:" && diff -u "${{ inputs.manifest_path }}" "$processed_manifest_path" || true
+        
+        grep -n '__MODEL_URL__' "$processed_manifest_path" && echo 'WARNING: MODEL placeholder still present' || true
+        grep -n '__PREPROCESSOR_URL__' "$processed_manifest_path" && echo 'WARNING: PREPROCESSOR placeholder still present' || true
+        
+        echo "manifest_path=$processed_manifest_path" >> $GITHUB_OUTPUT
+
+    - name: Set output
+      id: set_output
+      shell: bash
+      run: echo "manifest_path=${{ steps.prepare.outputs.manifest_path }}" >> $GITHUB_OUTPUT
