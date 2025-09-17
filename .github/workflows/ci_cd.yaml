@@ -186,25 +186,39 @@ jobs:
             DO_SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
             DO_SPACES_REGION: ${{ secrets.DO_SPACES_REGION }}
 
-    deploy:
+    discover_model:
         runs-on: ubuntu-latest
-        needs: [ci, train]
+        needs: train
         if: ${{ always() && !cancelled() && needs.train.result == 'success' }}
         environment: ${{ github.event.inputs.environment || 'stage' }}
+        outputs:
+            model_url: ${{ steps.find.outputs.model_url }}
+            preprocessor_url: ${{ steps.find.outputs.preprocessor_url }}
         steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
-            - name: Set up Kubeconfig
-              uses: azure/k8s-set-context@v4
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
               with:
-                method: kubeconfig
-                kubeconfig: ${{ secrets.KUBECONFIG }}
-            - name: Deploy inference service
-              uses: azure/k8s-deploy@v5
-              with:
-                action: deploy
-                manifests: |
-                  k8s/inference-pipeline-deployment.yaml
-                images: |
-                  pauloyuncha/breast-cancer-detection-ml:latest
-                namespace: ${{ github.event.inputs.environment || 'dev' }}
+                python-version: '3.x'
+            - name: Install dependencies
+              run: pip install boto3
+            - name: Run discovery script
+              id: find
+              env:
+                DO_SPACES_ACCESS_KEY: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+                DO_SPACES_SECRET_KEY: ${{ secrets.DO_SPACES_SECRET_KEY }}
+                DO_SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+                DO_SPACES_REGION: ${{ secrets.DO_SPACES_REGION }}
+              run: python3 .github/scripts/discover_latest_model.py
+
+    deploy:
+        needs: [ci, discover_model]
+        if: ${{ always() && !cancelled() && needs.discover_model.result == 'success' }}
+        uses: ./.github/workflows/deploy.yaml
+        with:
+            manifests: 'k8s/inference-pipeline-deployment.yaml'
+            images: ${{ needs.ci.outputs.image_tag }}
+            environment: ${{ github.event.inputs.environment || 'stage' }}
+            model_url: ${{ needs.discover_model.outputs.model_url }}
+            preprocessor_url: ${{ needs.discover_model.outputs.preprocessor_url }}
+        secrets:
+            DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
