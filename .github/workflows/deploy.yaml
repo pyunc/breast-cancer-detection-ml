@@ -57,6 +57,7 @@ jobs:
           echo "=== End Deployment Information ==="
       
       - name: Prepare manifests
+        id: prepare_manifest
         uses: ./.github/actions/prepare-deployment-manifest
         with:
           manifest_path: ${{ inputs.manifests }}
@@ -73,7 +74,7 @@ jobs:
       - name: Apply manifests
         run: |
           set -e
-          kubectl apply -f ${{ inputs.manifests }}
+          kubectl apply -f ${{ steps.prepare_manifest.outputs.manifest_path }}
           echo '--- Deployment ---'
           kubectl get deploy -o wide
           echo '--- Pods (pre-rollout) ---'

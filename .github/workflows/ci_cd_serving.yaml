@@ -1,13 +1,13 @@
 name: CI/CD Pipeline Serving
 
 on:
-  push:
-    branches: [dev, feat/*, main]
-    paths:
-      - 'src/**'
-      - 'pipelines/**'
-      - 'k8s/**'
-      - '.github/**'
+  # push:
+  #   branches: [dev, feat/*, main]
+  #   paths:
+  #     - 'src/**'
+  #     - 'pipelines/**'
+  #     - 'k8s/**'
+  #     - '.github/**'
   pull_request:
     branches: [dev, main]
   workflow_dispatch:
