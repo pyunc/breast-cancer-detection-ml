@@ -74,7 +74,7 @@ jobs:
       - name: Apply manifests
         run: |
           set -e
-          kubectl apply -f ${{ steps.prepare_manifest.outputs.manifest_path }}
+          kubectl apply -f ${{ inputs.manifests }}
           echo '--- Deployment ---'
           kubectl get deploy -o wide
           echo '--- Pods (pre-rollout) ---'
