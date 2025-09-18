@@ -34,13 +34,37 @@ runs:
         kubectl cp "$POD":/opt/ml/models ./models 2>/dev/null || \
           kubectl cp "$POD":/app/models ./models 2>/dev/null || echo "No models copied"
         find models -maxdepth 3 -type f -ls || true
+
+    - name: Validate DO Spaces configuration
+      if: ${{ hashFiles('models/**') != '' }}
+      shell: bash
+      env:
+        ACCESS_KEY: ${{ inputs.do_spaces_access_key || env.DO_SPACES_ACCESS_KEY }}
+        SECRET_KEY: ${{ inputs.do_spaces_secret_key || env.DO_SPACES_SECRET_KEY }}
+        BUCKET: ${{ inputs.do_spaces_bucket || env.DO_SPACES_BUCKET }}
+        REGION: ${{ inputs.do_spaces_region || env.DO_SPACES_REGION }}
+      run: |
+        set -e
+        missing=()
+        [ -n "$ACCESS_KEY" ] || missing+=("ACCESS_KEY (inputs.do_spaces_access_key / env.DO_SPACES_ACCESS_KEY)")
+        [ -n "$SECRET_KEY" ] || missing+=("SECRET_KEY (inputs.do_spaces_secret_key / env.DO_SPACES_SECRET_KEY)")
+        [ -n "$BUCKET" ] || missing+=("BUCKET (inputs.do_spaces_bucket / env.DO_SPACES_BUCKET)")
+        [ -n "$REGION" ] || missing+=("REGION (inputs.do_spaces_region / env.DO_SPACES_REGION)")
+        if [ ${#missing[@]} -gt 0 ]; then
+          echo "::group::Missing required DigitalOcean Spaces configuration"
+          for m in "${missing[@]}"; do echo "::error::Missing $m"; done
+          echo "Provide these via action inputs or set env vars in the caller job. Skipping upload."
+          echo "::endgroup::"
+          exit 1
+        fi
+
     - name: Upload trained model to DigitalOcean Spaces
-      if: ${{ hashFiles('models/*') != '' }}
+      if: ${{ hashFiles('models/**') != '' && (inputs.do_spaces_access_key != '' || env.DO_SPACES_ACCESS_KEY != '') && (inputs.do_spaces_secret_key != '' || env.DO_SPACES_SECRET_KEY != '') && (inputs.do_spaces_bucket != '' || env.DO_SPACES_BUCKET != '') && (inputs.do_spaces_region != '' || env.DO_SPACES_REGION != '') }}
       uses: BetaHuhn/do-spaces-action@v2
       with:
-        access_key: ${{ inputs.do_spaces_access_key }}
-        secret_key: ${{ inputs.do_spaces_secret_key }}
-        space_name: ${{ inputs.do_spaces_bucket }}
-        space_region: ${{ inputs.do_spaces_region }}
+        access_key: ${{ inputs.do_spaces_access_key || env.DO_SPACES_ACCESS_KEY }}
+        secret_key: ${{ inputs.do_spaces_secret_key || env.DO_SPACES_SECRET_KEY }}
+        space_name: ${{ inputs.do_spaces_bucket || env.DO_SPACES_BUCKET }}
+        space_region: ${{ inputs.do_spaces_region || env.DO_SPACES_REGION }}
         source: models/
         out_dir: models/${{ inputs.github_run_number }}-${{ inputs.github_sha }}
