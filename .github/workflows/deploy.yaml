@@ -51,10 +51,26 @@ jobs:
           echo "Manifests: ${{ inputs.manifests }}"
           echo "Images: ${{ inputs.images }}"
           echo "Requested Cluster (may be blank for auto): ${{ inputs.cluster_name }}"
-          echo "Model URL: ${{ inputs.model_url }}"
-          echo "Preprocessor URL: ${{ inputs.preprocessor_url }}"
+          echo "Model URL (input): ${{ inputs.model_url }}"
+          echo "Preprocessor URL (input): ${{ inputs.preprocessor_url }}"
+          echo "Model URL (env var in Environment): ${{ vars.MODEL_URL }}"
+          echo "Preprocessor URL (env var in Environment): ${{ vars.PREPROCESSOR_URL }}"
           if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then echo "DigitalOcean token detected (masked)"; else echo "DigitalOcean token MISSING"; fi
           echo "=== End Deployment Information ==="
+
+      - name: Export model URLs to env
+        run: |
+          set -euo pipefail
+          MODEL_IN='${{ inputs.model_url }}'
+          PREP_IN='${{ inputs.preprocessor_url }}'
+          MODEL_ENV_VAR='${{ vars.MODEL_URL }}'
+          PREP_ENV_VAR='${{ vars.PREPROCESSOR_URL }}'
+          EFFECTIVE_MODEL="$MODEL_IN"
+          if [ -z "$EFFECTIVE_MODEL" ] && [ -n "$MODEL_ENV_VAR" ]; then EFFECTIVE_MODEL="$MODEL_ENV_VAR"; fi
+          EFFECTIVE_PREP="$PREP_IN"
+          if [ -z "$EFFECTIVE_PREP" ] && [ -n "$PREP_ENV_VAR" ]; then EFFECTIVE_PREP="$PREP_ENV_VAR"; fi
+          if [ -n "$EFFECTIVE_MODEL" ]; then echo "MODEL_URL=$EFFECTIVE_MODEL" >> $GITHUB_ENV; echo "Exported MODEL_URL"; else echo "::notice::No effective MODEL_URL found"; fi
+          if [ -n "$EFFECTIVE_PREP" ]; then echo "PREPROCESSOR_URL=$EFFECTIVE_PREP" >> $GITHUB_ENV; echo "Exported PREPROCESSOR_URL"; else echo "::notice::No effective PREPROCESSOR_URL found"; fi
       
       - name: Prepare manifests
         id: prepare_manifest

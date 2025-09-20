@@ -22,28 +22,44 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if [ -z "${{ inputs.model_url }}" ] && [ -z "${{ inputs.preprocessor_url }}" ]; then
-          echo "No model or preprocessor URL provided, skipping manifest preparation."
+        echo "[prepare-deployment-manifest] manifest_path='${{ inputs.manifest_path }}'"
+        echo "[prepare-deployment-manifest] raw model_url input='${{ inputs.model_url }}'"
+        echo "[prepare-deployment-manifest] raw preprocessor_url input='${{ inputs.preprocessor_url }}'"
+        echo "[prepare-deployment-manifest] env MODEL_URL='${MODEL_URL:-}'"
+        echo "[prepare-deployment-manifest] env PREPROCESSOR_URL='${PREPROCESSOR_URL:-}'"
+
+        # Compute effective values: prefer inputs, fallback to env vars if inputs empty
+        EFFECTIVE_MODEL_URL='${{ inputs.model_url }}'
+        if [ -z "$EFFECTIVE_MODEL_URL" ] && [ -n "${MODEL_URL:-}" ]; then
+          EFFECTIVE_MODEL_URL="$MODEL_URL"
+        fi
+        EFFECTIVE_PREPROCESSOR_URL='${{ inputs.preprocessor_url }}'
+        if [ -z "$EFFECTIVE_PREPROCESSOR_URL" ] && [ -n "${PREPROCESSOR_URL:-}" ]; then
+          EFFECTIVE_PREPROCESSOR_URL="$PREPROCESSOR_URL"
+        fi
+
+        echo "[prepare-deployment-manifest] effective model_url='$EFFECTIVE_MODEL_URL'"
+        echo "[prepare-deployment-manifest] effective preprocessor_url='$EFFECTIVE_PREPROCESSOR_URL'"
+
+        if [ -z "$EFFECTIVE_MODEL_URL" ] && [ -z "$EFFECTIVE_PREPROCESSOR_URL" ]; then
+          echo "::warning::No model or preprocessor URL provided (inputs/env). Skipping manifest preparation."
           echo "manifest_path=${{ inputs.manifest_path }}" >> $GITHUB_OUTPUT
           exit 0
         fi
-        echo "Original manifest snippet:" && head -n 60 "${{ inputs.manifest_path }}" || true
+
+        echo "Original manifest snippet:" && head -n 120 "${{ inputs.manifest_path }}" || true
         
         processed_manifest_path="${{ runner.temp }}/processed-manifest.yaml"
-        
         cp "${{ inputs.manifest_path }}" "$processed_manifest_path"
-        if [ -n "${{ inputs.model_url }}" ]; then
-          sed -i "s|__MODEL_URL__|${{ inputs.model_url }}|g" "$processed_manifest_path"
+
+        if [ -n "$EFFECTIVE_MODEL_URL" ]; then
+          sed -i "s|__MODEL_URL__|$EFFECTIVE_MODEL_URL|g" "$processed_manifest_path"
         fi
-        if [ -n "${{ inputs.preprocessor_url }}" ]; then
-          sed -i "s|__PREPROCESSOR_URL__|${{ inputs.preprocessor_url }}|g" "$processed_manifest_path"
+        if [ -n "$EFFECTIVE_PREPROCESSOR_URL" ]; then
+          sed -i "s|__PREPROCESSOR_URL__|$EFFECTIVE_PREPROCESSOR_URL|g" "$processed_manifest_path"
         fi
         
         echo "Processed manifest diff:" && diff -u "${{ inputs.manifest_path }}" "$processed_manifest_path" || true
-        
-        grep -n '__MODEL_URL__' "$processed_manifest_path" && echo 'WARNING: MODEL placeholder still present' || true
-        grep -n '__PREPROCESSOR_URL__' "$processed_manifest_path" && echo 'WARNING: PREPROCESSOR placeholder still present' || true
-        
         echo "manifest_path=$processed_manifest_path" >> $GITHUB_OUTPUT
 
     - name: Set output
