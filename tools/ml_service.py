@@ -29,12 +29,15 @@ if __name__ == "__main__":
     global model_predictor
     
     try:
+        print(f"ml_service starting with args: model={args.model_path}, preprocessor={args.preprocessor_path}")
+        print(f"ENV MODEL_URL={os.getenv('MODEL_URL')}")
+        print(f"ENV PREPROCESSOR_URL={os.getenv('PREPROCESSOR_URL')}")
         
         if not initialize_model(args.model_path, args.preprocessor_path):
             print("Failed to initialize model. Exiting.")
             sys.exit(1)
         
-        print(f"Model loaded successfully from {args.model_path}")
+        print(f"Model loaded successfully from {args.model_path} (or env fallback)")
 
         # Start the server
         print(f"Starting FastAPI server on http://{args.host}:{args.port}")
@@ -44,4 +47,3 @@ if __name__ == "__main__":
         print(f"Error loading model: {str(e)}")
         raise
 
-        

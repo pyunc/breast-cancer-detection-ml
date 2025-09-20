@@ -64,6 +64,28 @@ jobs:
           model_url: ${{ inputs.model_url }}
           preprocessor_url: ${{ inputs.preprocessor_url }}
 
+      - name: Show prepared manifest (for debugging)
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "Prepared manifest path: ${{ steps.prepare_manifest.outputs.manifest_path }}"
+          echo "::group::Prepared manifest content"
+          cat "${{ steps.prepare_manifest.outputs.manifest_path }}"
+          echo "::endgroup::"
+          echo "Verifying placeholders are replaced..."
+          if grep -nE "__MODEL_URL__|__PREPROCESSOR_URL__" "${{ steps.prepare_manifest.outputs.manifest_path }}"; then
+            echo "::error::Unresolved placeholders found in prepared manifest. Aborting deployment."
+            exit 1
+          else
+            echo "All placeholders resolved."
+          fi
+
+      - name: Upload prepared manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepared-manifest
+          path: ${{ steps.prepare_manifest.outputs.manifest_path }}
+
       - name: Setup DigitalOcean and Kubernetes
         id: do_k8s_setup
         uses: ./.github/actions/do-k8s-setup
@@ -88,6 +110,24 @@ jobs:
       - name: Show services
         run: |
           kubectl get svc inference -o wide || true
+
+      - name: Describe deployment and show pod logs/env (debug)
+        if: always()
+        run: |
+          set -e
+          echo '--- Describe Deployment ---'
+          kubectl describe deploy breast-cancer-detection-ml-inference-pipeline-deployment || true
+          echo '--- Pods ---'
+          kubectl get pods -l app=inference -o wide || true
+          POD=$(kubectl get pods -l app=inference -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            echo "--- Logs (last 200 lines) for $POD ---"
+            kubectl logs "$POD" --all-containers=true --tail=200 || true
+            echo '--- Pod env filtered ---'
+            kubectl exec "$POD" -- /bin/sh -lc 'printenv | grep -E "MODEL_URL|PREPROCESSOR_URL|APP_"' || true
+          else
+            echo 'No pods found with label app=inference'
+          fi
       
       - name: Summary
         run: |

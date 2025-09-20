@@ -12,6 +12,12 @@ load_dotenv()
 # Added import for remote artifact download
 import requests  # noqa: E402
 
+# NEW: logging for debug visibility
+import logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=LOG_LEVEL, format='[%(asctime)s] %(levelname)s %(name)s: %(message)s')
+logger = logging.getLogger("inference")
+
 
 
 from src.predictor import ModelPredictor, load_model_for_prediction  # noqa: E402
@@ -119,44 +125,67 @@ def initialize_model(model_path, preprocessor_path=None):
     """
     global model_predictor
 
-    # Environment variable fallback if arguments are empty/None
-    if not model_path:
+    logger.info("initialize_model called")
+    logger.info(f"Incoming model_path arg: {model_path}")
+    logger.info(f"Incoming preprocessor_path arg: {preprocessor_path}")
+    logger.info(f"Env MODEL_URL: {os.getenv('MODEL_URL')}")
+    logger.info(f"Env PREPROCESSOR_URL: {os.getenv('PREPROCESSOR_URL')}")
+
+    # Environment variable fallback if arguments are empty/placeholder/None
+    PLACEHOLDERS = {None, "", "__MODEL_URL__", "__PREPROCESSOR_URL__"}
+    if model_path in PLACEHOLDERS:
+        logger.warning("model_path is empty/placeholder; falling back to env MODEL_URL")
         model_path = os.getenv("MODEL_URL")
-    if not preprocessor_path:
+    if preprocessor_path in PLACEHOLDERS:
+        logger.info("preprocessor_path is empty/placeholder; falling back to env PREPROCESSOR_URL")
         preprocessor_path = os.getenv("PREPROCESSOR_URL")
 
     def _download_if_url(path: str, target_dir: str = "/opt/ml/models"):
-        if not path or not path.startswith(("http://", "https://")):
+        if not path or not isinstance(path, str):
+            return path
+        if not path.startswith(("http://", "https://")):
             return path
         os.makedirs(target_dir, exist_ok=True)
         filename = os.path.basename(path.split("?")[0])
         local_path = os.path.join(target_dir, f"remote_{filename}")
         if not os.path.exists(local_path):
-            print(f"Downloading remote artifact from DO bucket in stage branch: {path}")
+            logger.info(f"Downloading remote artifact: {path}")
             resp = requests.get(path, timeout=120)
             resp.raise_for_status()
             with open(local_path, "wb") as f:
                 f.write(resp.content)
-            print(f"Saved to {local_path}")
+            logger.info(f"Saved to {local_path}")
         else:
-            print(f"Using cached artifact at {local_path}")
+            logger.info(f"Using cached artifact at {local_path}")
         return local_path
 
     try:
+        if not model_path:
+            raise ValueError("MODEL path could not be resolved from args or env")
+        if model_path in PLACEHOLDERS:
+            raise ValueError(f"MODEL path is unresolved placeholder: {model_path}")
+
         model_path = _download_if_url(model_path)
         if preprocessor_path:
-            preprocessor_path = _download_if_url(preprocessor_path)
+            if preprocessor_path in PLACEHOLDERS:
+                logger.warning(f"Ignoring unresolved preprocessor placeholder: {preprocessor_path}")
+                preprocessor_path = None
+            else:
+                preprocessor_path = _download_if_url(preprocessor_path)
+
+        logger.info(f"Resolved model_path: {model_path}")
+        logger.info(f"Resolved preprocessor_path: {preprocessor_path}")
 
         model_predictor = load_model_for_prediction(
             model_path=model_path,
             preprocessor_path=preprocessor_path
         )
-        print(f"Model loaded successfully from {model_path}")
+        logger.info(f"Model loaded successfully from {model_path}")
         if preprocessor_path:
-            print(f"Preprocessor loaded successfully from {preprocessor_path}")
+            logger.info(f"Preprocessor loaded successfully from {preprocessor_path}")
         return True
     except Exception as e:
-        print(f"Error loading model: {str(e)}")
+        logger.exception(f"Error loading model: {str(e)}")
         return False
 
 
@@ -175,7 +204,9 @@ async def root():
         "message": f"{app_name} is running",
         "version": app_version,
         "author": app_author,
-        "server": app_server
+        "server": app_server,
+        "model_env": os.getenv("MODEL_URL"),
+        "preprocessor_env": os.getenv("PREPROCESSOR_URL"),
     }
 
 
