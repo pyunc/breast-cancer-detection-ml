@@ -10,6 +10,43 @@ on:
   #           - '.github/**'
   pull_request:
         branches: [dev, main]
+  workflow_call:
+      inputs:
+          environment:
+              description: 'Environment to deploy to'
+              required: true
+              default: 'stage'
+              type: string
+          tune_hyperparameters:
+            description: 'Enable hyperparameter tuning'
+            required: false
+            default: true
+            type: boolean
+          manifests:
+            description: 'Kubernetes training manifest path'
+            required: false
+            default: './k8s/train-job.yaml'
+            type: string
+          image:
+            description: 'Training image (with tag) to use'
+            required: false
+            default: 'pauloyuncha/breast-cancer-detection-ml:latest'
+            type: string
+          cluster_name:
+            description: 'DigitalOcean Kubernetes cluster name or ID (optional – auto-pick first if empty)'
+            required: false
+            type: string
+      secrets:
+          DO_API_TOKEN:
+              required: true
+          DO_SPACES_ACCESS_KEY:
+              required: true
+          DO_SPACES_SECRET_KEY:
+              required: true
+          DO_SPACES_BUCKET:
+              required: true
+          DO_SPACES_REGION:
+              required: true
   workflow_dispatch:
       inputs:
           environment:
@@ -40,15 +77,15 @@ on:
 jobs:
   train:
     runs-on: ubuntu-latest
-    # Use fallback when not workflow_dispatch (push/PR events have no inputs.*)
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
+    # Use fallback when not workflow_dispatch or workflow_call (push/PR events have no inputs.*)
+    environment: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.environment || 'stage' }}
     env:
-      # Fallback vars (use inputs only if workflow_dispatch)
-      ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
-      MANIFEST: ${{ github.event_name == 'workflow_dispatch' && inputs.manifests || './k8s/train-job.yaml' }}
-      IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'pauloyuncha/breast-cancer-detection-ml:latest' }}
-      TUNE: ${{ github.event_name == 'workflow_dispatch' && inputs.tune_hyperparameters ||  'true' }}
-      CLUSTER_NAME_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.cluster_name || '' }}
+      # Fallback vars (use inputs only if workflow_dispatch or workflow_call)
+      ENVIRONMENT: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.environment || 'stage' }}
+      MANIFEST: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.manifests || './k8s/train-job.yaml' }}
+      IMAGE: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.image || 'pauloyuncha/breast-cancer-detection-ml:latest' }}
+      TUNE: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.tune_hyperparameters ||  'true' }}
+      CLUSTER_NAME_INPUT: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.cluster_name || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -108,5 +145,5 @@ jobs:
           echo "Training job finished" >> $GITHUB_STEP_SUMMARY
           echo "Image: $IMAGE" >> $GITHUB_STEP_SUMMARY
           echo "Tune: $TUNE" >> $GITHUB_STEP_SUMMARY
-          echo "Cluster: ${{ steps.resolve_cluster.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster: ${{ steps.do_k8s_setup.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
           echo "Job: ${{ steps.prep.outputs.job_name }}" >> $GITHUB_STEP_SUMMARY
