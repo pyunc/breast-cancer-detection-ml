@@ -32,6 +32,18 @@ on:
       DO_API_TOKEN:
         description: 'DigitalOcean API token (read/write)'
         required: true
+      DO_SPACES_ACCESS_KEY:
+        description: 'DigitalOcean Spaces access key'
+        required: true
+      DO_SPACES_SECRET_KEY:
+        description: 'DigitalOcean Spaces secret key'
+        required: true
+      DO_SPACES_BUCKET:
+        description: 'DigitalOcean Spaces bucket name'
+        required: true
+      DO_SPACES_REGION:
+        description: 'DigitalOcean Spaces region'
+        required: true
 
 jobs:
   deploy:
@@ -58,17 +70,44 @@ jobs:
           if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then echo "DigitalOcean token detected (masked)"; else echo "DigitalOcean token MISSING"; fi
           echo "=== End Deployment Information ==="
 
+      - name: Read model metadata from bucket
+        id: read_metadata
+        run: |
+          set -e
+          pip install boto3
+          python3 .github/scripts/read_model_metadata.py
+        env:
+          DO_SPACES_ACCESS_KEY: ${{ secrets.DO_SPACES_ACCESS_KEY }}
+          DO_SPACES_SECRET_KEY: ${{ secrets.DO_SPACES_SECRET_KEY }}
+          DO_SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+          DO_SPACES_REGION: ${{ secrets.DO_SPACES_REGION }}
+
       - name: Export model URLs to env
         run: |
           set -euo pipefail
+          # Priority: 1. Metadata from bucket, 2. Workflow inputs, 3. Environment variables
+          METADATA_MODEL='${{ steps.read_metadata.outputs.model_url }}'
+          METADATA_PREP='${{ steps.read_metadata.outputs.preprocessor_url }}'
           MODEL_IN='${{ inputs.model_url }}'
           PREP_IN='${{ inputs.preprocessor_url }}'
           MODEL_ENV_VAR='${{ vars.MODEL_URL }}'
           PREP_ENV_VAR='${{ vars.PREPROCESSOR_URL }}'
-          EFFECTIVE_MODEL="$MODEL_IN"
+          
+          echo "=== Model URL Priority Resolution ==="
+          echo "1. Metadata from bucket (highest priority): model=$METADATA_MODEL, preprocessor=$METADATA_PREP"
+          echo "2. Workflow inputs: model=$MODEL_IN, preprocessor=$PREP_IN"
+          echo "3. Environment variables: model=$MODEL_ENV_VAR, preprocessor=$PREP_ENV_VAR"
+          
+          EFFECTIVE_MODEL="$METADATA_MODEL"
+          if [ -z "$EFFECTIVE_MODEL" ] && [ -n "$MODEL_IN" ]; then EFFECTIVE_MODEL="$MODEL_IN"; fi
           if [ -z "$EFFECTIVE_MODEL" ] && [ -n "$MODEL_ENV_VAR" ]; then EFFECTIVE_MODEL="$MODEL_ENV_VAR"; fi
-          EFFECTIVE_PREP="$PREP_IN"
+          
+          EFFECTIVE_PREP="$METADATA_PREP"
+          if [ -z "$EFFECTIVE_PREP" ] && [ -n "$PREP_IN" ]; then EFFECTIVE_PREP="$PREP_IN"; fi
           if [ -z "$EFFECTIVE_PREP" ] && [ -n "$PREP_ENV_VAR" ]; then EFFECTIVE_PREP="$PREP_ENV_VAR"; fi
+          
+          echo "Final effective URLs: model=$EFFECTIVE_MODEL, preprocessor=$EFFECTIVE_PREP"
+          
           if [ -n "$EFFECTIVE_MODEL" ]; then echo "MODEL_URL=$EFFECTIVE_MODEL" >> $GITHUB_ENV; echo "Exported MODEL_URL"; else echo "::notice::No effective MODEL_URL found"; fi
           if [ -n "$EFFECTIVE_PREP" ]; then echo "PREPROCESSOR_URL=$EFFECTIVE_PREP" >> $GITHUB_ENV; echo "Exported PREPROCESSOR_URL"; else echo "::notice::No effective PREPROCESSOR_URL found"; fi
       
@@ -77,8 +116,8 @@ jobs:
         uses: ./.github/actions/prepare-deployment-manifest
         with:
           manifest_path: ${{ inputs.manifests }}
-          model_url: ${{ inputs.model_url }}
-          preprocessor_url: ${{ inputs.preprocessor_url }}
+          model_url: ${{ steps.read_metadata.outputs.model_url || inputs.model_url }}
+          preprocessor_url: ${{ steps.read_metadata.outputs.preprocessor_url || inputs.preprocessor_url }}
 
       - name: Show prepared manifest (for debugging)
         if: always()
