@@ -27,7 +27,7 @@ on:
                 default: '{IMAGE_TAG}'
                 type: string
             run_ci:
-                description: 'Run ci step by Docker build and push'
+                description: 'Run ci step by Docker build/push, run train and deploy serving steps'
                 required: false
                 default: true
                 type: boolean
@@ -176,7 +176,7 @@ jobs:
                 echo "Finished CI step."
 
     train:
-        uses: ./.github/workflows/ci_cd_training.yaml
+        uses: ./.github/workflows/train.yaml
         needs: ci
         with:
             environment: ${{ github.event.inputs.environment || 'stage' }}
