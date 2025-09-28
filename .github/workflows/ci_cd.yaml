@@ -181,6 +181,8 @@ jobs:
         with:
             environment: ${{ github.event.inputs.environment || 'stage' }}
             image: ${{ needs.ci.outputs.image_tag }}
+            manifests: 'k8s/train-job.yaml'
+            tune_hyperparameters: true
         secrets:
             DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
             DO_SPACES_ACCESS_KEY: ${{ secrets.DO_SPACES_ACCESS_KEY }}
