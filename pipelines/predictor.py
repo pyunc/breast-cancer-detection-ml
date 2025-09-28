@@ -84,7 +84,8 @@ class ModelExplanationResponse(BaseModel):
 app = FastAPI(
     title="Breast Cancer Prediction API",
     description="API for breast cancer classification using machine learning",
-    version="1.0.0"
+    version="1.0.0",
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1}
 )
 
 # Add CORS middleware

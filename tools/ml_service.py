@@ -19,8 +19,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Start the breast cancer prediction API server')
-    parser.add_argument('--model-path', type=str, required=True, help='Path to the saved model file')
-    parser.add_argument('--preprocessor-path', type=str, help='Path to the saved preprocessor file')
+    parser.add_argument('--model-path', type=str, required=False, help='Path to the saved model file', default='/home/paulo-huna/Documents/breast-cancer-detection-ml/models/logistic_regression.joblib')
+    parser.add_argument('--preprocessor-path', type=str, required=False, help='Path to the saved preprocessor file', default='/home/paulo-huna/Documents/breast-cancer-detection-ml/models/preprocessor.joblib')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to run the server on')
     parser.add_argument('--port', type=int, default=8000, help='Port to run the server on')
     
