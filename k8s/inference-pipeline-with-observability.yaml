@@ -1,0 +1,521 @@
+# create a configmap for the k8s cluster
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aula-k8s-config
+  # namespace: dev
+data:
+  # Add your configuration data here
+  APP_VERSION_CONFIG: "7.0.0"
+  APP_NAME_CONFIG: "prod-configmap-breast-cancer-detection-ml-inference-pipeline-with-observability"
+  APP_AUTHOR_CONFIG: "Paulo Yun Cha"
+  APP_VERSION: "7.0.0"
+  APP_NAME: "prod-configmap-breast-cancer-detection-ml-inference-pipeline-with-observability"
+  APP_AUTHOR: "Paulo Yun Cha"
+  APP_SERVER_CONFIG: "cloud-prod-env"
+
+---
+
+# Prometheus Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  # namespace: dev
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: 'ml-api'
+        static_configs:
+          - targets: ['inference:8501']
+        metrics_path: '/metrics'
+        scrape_interval: 5s
+
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets: ['node-exporter:9100']
+
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+
+---
+
+# Grafana Datasource Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  # namespace: dev
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+
+---
+
+# PersistentVolumeClaim for Prometheus
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  # namespace: dev
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+
+# PersistentVolumeClaim for Grafana
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  # namespace: dev
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: breast-cancer-detection-ml-inference-pipeline-deployment
+  # namespace: dev
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: inference
+  template:
+    metadata:
+      labels:
+        app: inference
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      
+      containers:
+        - name: inference
+          image: pauloyuncha/breast-cancer-detection-ml:latest
+          command: ["uv"]
+          args:
+            - run
+            - python3
+            - tools/ml_service.py
+            - --model-path
+            - "/opt/ml/models/logistic_regression.joblib"
+            - --preprocessor-path
+            - "/opt/ml/models/preprocessor.joblib"
+            - --port
+            - "8000"
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "800Mi"
+            requests:
+              cpu: "0.5"
+              memory: "800Mi"
+          env:
+            - name: APP_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_VERSION_CONFIG
+            - name: APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_NAME_CONFIG
+            - name: APP_AUTHOR
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_AUTHOR_CONFIG
+            - name: APP_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: aula-k8s-config
+                  key: APP_SERVER_CONFIG
+            - name: MODEL_URL
+              value: "__MODEL_URL__"
+            - name: PREPROCESSOR_URL
+              value: "__PREPROCESSOR_URL__"
+        # add health check
+          # livenessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 8000
+          #   initialDelaySeconds: 40
+          #   periodSeconds: 30
+          #   timeoutSeconds: 10
+          #   failureThreshold: 3
+          
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference
+  # namespace: dev
+spec:
+  selector:
+    app: inference
+  ports:
+    - name: http
+      port: 8501
+      targetPort: 8000
+      nodePort: 30000
+  type: NodePort
+
+
+
+
+---
+# Horizontal Pod Autoscaler for the inference pipeline
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: inference
+  # namespace: dev
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: breast-cancer-detection-ml-inference-pipeline-deployment
+  minReplicas: 20
+  maxReplicas: 30
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+
+---
+
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  # namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels: 
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+          containers:
+          - name: prometheus
+            image: prom/prometheus:latest
+            ports:
+            - containerPort: 9090
+            args:
+              - '--config.file=/etc/prometheus/prometheus.yml'
+              - '--storage.tsdb.path=/prometheus'
+              - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+              - '--web.console.templates=/usr/share/prometheus/consoles'
+              - '--storage.tsdb.retention.time=15d'
+              - '--web.enable-lifecycle'
+              - '--web.enable-admin-api'
+            volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus
+            - name: prometheus-storage-volume
+              mountPath: /prometheus
+            resources:
+              limits:
+                cpu: "1"
+                memory: "2Gi"
+              requests:
+                cpu: "0.5"
+                memory: "1Gi"
+          volumes:
+          - name: prometheus-config-volume
+            configMap:
+              name: prometheus-config
+          - name: prometheus-storage-volume
+            persistentVolumeClaim:
+              claimName: prometheus-pvc
+
+---
+
+# Prometheus Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  # namespace: dev
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+    nodePort: 30090
+    name: prometheus
+  type: NodePort
+
+---
+
+# Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  # namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+          requests:
+            cpu: "0.5"
+            memory: "512Mi"
+      volumes:
+      - name: grafana-storage
+        persistentVolumeClaim:
+          claimName: grafana-pvc
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+
+---
+
+# Grafana Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  # namespace: dev
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+    nodePort: 30300
+    name: grafana
+  type: NodePort
+
+---
+
+# Node Exporter DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  # namespace: dev
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:latest
+        ports:
+        - containerPort: 9100
+        args:
+        - '--path.procfs=/host/proc'
+        - '--path.rootfs=/rootfs'
+        - '--path.sysfs=/host/sys'
+        - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        volumeMounts:
+        - name: dev
+          mountPath: /host/dev
+        - name: proc
+          mountPath: /host/proc
+        - name: sys
+          mountPath: /host/sys
+        - name: rootfs
+          mountPath: /rootfs
+        resources:
+          limits:
+            cpu: "0.2"
+            memory: "200Mi"
+          requests:
+            cpu: "0.1"
+            memory: "100Mi"
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: dev
+        hostPath:
+          path: /dev
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: rootfs
+        hostPath:
+          path: /
+      tolerations:
+      - operator: Exists
+
+---
+
+# Node Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  # namespace: dev
+spec:
+  selector:
+    app: node-exporter
+  ports:
+  - port: 9100
+    targetPort: 9100
+    name: node-exporter
+  type: ClusterIP
+
+---
+
+# Ingress for Prometheus and Grafana
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: monitoring-ingress
+  # namespace: dev
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Production-ready annotations (disabled for local testing)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  # TLS configuration for production (disabled for local testing)
+  # tls:
+  # - hosts:
+  #   - prometheus.your-domain.com
+  #   - grafana.your-domain.com
+  #   - api.your-domain.com
+  #   secretName: monitoring-tls
+  rules:
+  - host: prometheus.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus
+            port:
+              number: 9090
+  - host: grafana.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+  - host: api.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: inference
+            port:
+              number: 8501
+
+
+

@@ -6,7 +6,7 @@ WORKDIR /opt/ml/
 
 
 RUN apt-get -y update
-RUN apt-get install -y --no-install-recommends build-essential libgomp1 nginx
+RUN apt-get install -y --no-install-recommends build-essential libgomp1 nginx wget
 
 
 # Install UV - faster Python package installer

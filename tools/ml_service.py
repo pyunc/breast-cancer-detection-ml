@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import uvicorn
 from pipelines.predictor import app
 
-from pipelines.predictor import initialize_model
+from pipelines.predictor import initialize_model    
 
 if __name__ == "__main__":
     # Test the FastAPI app

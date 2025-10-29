@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Response
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +17,17 @@ import logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format='[%(asctime)s] %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger("inference")
+
+# Prometheus metrics (imported from separate module)
+from pipelines.metrics import (
+    metrics_middleware,
+    get_metrics_response,
+    record_prediction_metrics,
+    record_error_metrics,
+    record_model_load_time,
+    get_health_metrics
+)
+import time
 
 
 
@@ -97,6 +108,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add metrics middleware
+app.middleware("http")(metrics_middleware)
+
 # Global variables for the model and predictor
 model_predictor = None
 class_names = ['Benign', 'Malignant']
@@ -125,6 +139,9 @@ def initialize_model(model_path, preprocessor_path=None):
       - PREPROCESSOR_URL
     """
     global model_predictor
+
+    # Track model loading time
+    load_start_time = time.time()
 
     logger.info("initialize_model called")
     logger.info(f"Incoming model_path arg: {model_path}")
@@ -181,11 +198,17 @@ def initialize_model(model_path, preprocessor_path=None):
             model_path=model_path,
             preprocessor_path=preprocessor_path
         )
-        logger.info(f"Model loaded successfully from {model_path}")
+        
+        # Record model loading time
+        load_time = time.time() - load_start_time
+        record_model_load_time(load_time)
+        
+        logger.info(f"Model loaded successfully from {model_path} in {load_time:.2f} seconds")
         if preprocessor_path:
             logger.info(f"Preprocessor loaded successfully from {preprocessor_path}")
         return True
     except Exception as e:
+        record_error_metrics("model_loading_error")
         logger.exception(f"Error loading model: {str(e)}")
         return False
 
@@ -210,6 +233,54 @@ async def root():
         "preprocessor_env": os.getenv("PREPROCESSOR_URL"),
     }
 
+@app.get("/health")
+@app.head("/health")
+async def health_check():
+    """Health check endpoint for monitoring."""
+    try:
+        # Check if model is loaded
+        if model_predictor is None:
+            return {
+                "status": "unhealthy", 
+                "message": "Model not loaded",
+                "timestamp": time.time()
+            }
+        
+        return {
+            "status": "healthy",
+            "message": "API is running and model is loaded",
+            "timestamp": time.time(),
+            "model_loaded": model_predictor is not None,
+            "metrics": get_health_metrics()
+        }
+    except Exception as e:
+        record_error_metrics("health_check_error")
+        return {
+            "status": "unhealthy", 
+            "message": f"Health check failed: {str(e)}",
+            "timestamp": time.time()
+        }
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return get_metrics_response()
+
+@app.get("/metrics/comprehensive")
+async def comprehensive_metrics():
+    """
+    Get comprehensive request metrics with detailed breakdown.
+    
+    Returns detailed information about:
+    - Request success rates and status breakdown
+    - Error statistics  
+    - Prediction statistics
+    - Performance metrics
+    - Overall API health summary
+    """
+    from pipelines.metrics import get_comprehensive_request_metrics
+    return get_comprehensive_request_metrics()
+
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(input_data: PredictionInput, predictor: ModelPredictor = Depends(get_model_predictor)):
@@ -220,21 +291,27 @@ async def predict(input_data: PredictionInput, predictor: ModelPredictor = Depen
         # Convert input data to numpy array
         features = np.array(input_data.features).reshape(1, -1)
         
-        # Make prediction
+        # Make prediction with timing
+        inference_start = time.time()
         prediction = predictor.predict(
             features, 
             apply_scaling=input_data.apply_scaling, 
             apply_preprocessing=input_data.apply_preprocessing
         )
+        inference_time = time.time() - inference_start
+        
+        # Track prediction metrics
+        prediction_class = class_names[prediction[0]]
         
         # Build response
         response = {
             "prediction": int(prediction[0]),
-            "predicted_class": class_names[prediction[0]],
+            "predicted_class": prediction_class,
             "status": "Success",
             "message": "Prediction completed successfully"
         }
         
+        confidence = None
         # Add probabilities if available
         if hasattr(predictor.model, 'predict_proba'):
             probas = predictor.predict_proba(
@@ -243,11 +320,16 @@ async def predict(input_data: PredictionInput, predictor: ModelPredictor = Depen
                 apply_preprocessing=False
             )
             response["probabilities"] = probas[0].tolist()
-            response["confidence"] = float(np.max(probas[0]))
+            confidence = float(np.max(probas[0]))
+            response["confidence"] = confidence
+        
+        # Record prediction metrics
+        record_prediction_metrics(prediction_class, confidence, inference_time)
             
         return response
     
     except Exception as e:
+        record_error_metrics("prediction_error")
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 
